@@ -1,0 +1,27 @@
+---
+title: "OurQuest: 解析レポート"
+date: last-modified
+lang: ja
+---
+
+## 目的
+
+このレポートは、`targets` が構築した解析結果を Quarto で再現可能に出力する最小例です。
+
+## 要約統計量
+
+```{r}
+#| label: tbl-summary
+#| tbl-cap: "群ごとの要約統計量"
+
+summary_table <- targets::tar_read(summary_table)
+knitr::kable(summary_table, digits = 2)
+```
+
+## セッション情報
+
+```{r}
+#| label: session-info
+
+sessionInfo()
+```

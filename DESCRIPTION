@@ -1,0 +1,15 @@
+Package: OurQuest
+Title: Small Reproducible Research Project
+Version: 0.0.0.9000
+Description: A minimal reproducible research project using targets, renv,
+    testthat, lintr, styler, and Quarto.
+Encoding: UTF-8
+Imports:
+    knitr,
+    lintr,
+    quarto,
+    styler,
+    tarchetypes,
+    targets,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

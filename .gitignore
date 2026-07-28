@@ -1,0 +1,26 @@
+# R / RStudio
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# renv: keep the lockfile and bootstrap files, not the local library
+renv/library/
+renv/local/
+renv/staging/
+renv/cellar/
+
+# targets
+_targets/
+
+# Quarto
+/.quarto/
+/_site/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+
+**/*.quarto_ipynb
