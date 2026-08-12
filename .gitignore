@@ -23,4 +23,5 @@ Thumbs.db
 .vscode/
 
 
+/data/
 **/*.quarto_ipynb
