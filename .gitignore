@@ -23,5 +23,9 @@ Thumbs.db
 .vscode/
 
 
-/data/
+# Research data: downloaded and generated data stay local, while small,
+# manually curated research assets are versioned.
+/data/*
+!/data/manual/
+!/data/manual/**
 **/*.quarto_ipynb
