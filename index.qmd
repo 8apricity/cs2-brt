@@ -1,5 +1,5 @@
 ---
-title: "OurQuest: 解析レポート"
+title: "cs2-brt: 解析レポート"
 date: last-modified
 lang: ja
 ---
