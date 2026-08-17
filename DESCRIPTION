@@ -1,4 +1,4 @@
-Package: OurQuest
+Package: cs2brt
 Title: Small Reproducible Research Project
 Version: 0.0.0.9000
 Description: A minimal reproducible research project using targets, renv,
