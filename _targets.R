@@ -31,6 +31,7 @@ list(
   ),
   tar_quarto(
     report,
-    path = here::here("index.qmd")
+    # Keep this relative: tar_quarto() combines it with Quarto's output-dir.
+    path = "index.qmd"
   )
 )
