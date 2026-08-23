@@ -1,3 +1,5 @@
+here::i_am("_targets.R")
+
 library(targets)
 library(tarchetypes)
 
@@ -7,12 +9,12 @@ tar_option_set(
   seed = 20260728
 )
 
-source("R/functions.R")
+source(here::here("R", "functions.R"))
 
 list(
   tar_target(
     raw_data_file,
-    "data/raw/example.csv",
+    here::here("data", "raw", "example.csv"),
     format = "file"
   ),
   tar_target(
@@ -29,6 +31,6 @@ list(
   ),
   tar_quarto(
     report,
-    path = "index.qmd"
+    path = here::here("index.qmd")
   )
 )

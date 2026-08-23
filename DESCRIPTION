@@ -5,6 +5,7 @@ Description: A minimal reproducible research project using targets, renv,
     testthat, lintr, styler, and Quarto.
 Encoding: UTF-8
 Imports:
+    here,
     knitr,
     lintr,
     quarto,
