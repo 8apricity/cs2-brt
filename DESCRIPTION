@@ -6,16 +6,22 @@ Description: A minimal reproducible research project using targets, renv,
 Encoding: UTF-8
 Imports:
     augsynth,
+    dplyr,
     fixest,
+    forcats,
     ggplot2,
     here,
     knitr,
     lintr,
     modelsummary,
+    purrr,
     quarto,
+    readr,
     sf,
     styler,
     tarchetypes,
     targets,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    tibble,
+    tidyr
 Config/testthat/edition: 3
