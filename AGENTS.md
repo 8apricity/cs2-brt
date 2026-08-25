@@ -62,4 +62,4 @@ AIの推奨や作業上の仮定を、独断で研究上の決定として記録
 
 ## 現在の解析コード
 
-`_targets.R`、`R/functions.R`、`index.qmd` は、`data/raw/example.csv` を使う動作確認用の雛形である。現時点では、ひたちBRTの実分析を実装したパイプラインではない。
+`_targets.R`と`R/functions.R`は、地価公示・都道府県地価調査を標準化して`data/processed/`へ生成する。加工仕様は[`docs/data_processing.md`](docs/data_processing.md)を読む。`index.qmd`はレポート雛形であり、ひたちBRTの実分析はまだ実装していない。

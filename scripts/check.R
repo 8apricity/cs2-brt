@@ -18,4 +18,4 @@ if (length(lint_results) > 0L) {
   stop("Lint issues found.", call. = FALSE)
 }
 
-targets::tar_make()
+targets::tar_validate(callr_function = NULL)

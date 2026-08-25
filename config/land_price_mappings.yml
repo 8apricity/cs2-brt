@@ -1,0 +1,113 @@
+version: 1
+output_crs_epsg: 6668
+output_axis_order: longitude_latitude
+
+datasets:
+  land_price_publication:
+    prefix: L01
+    known_years: [1983, 2026]
+    reference_month: 1
+    reference_day: 1
+    feature_names: [LandPrice]
+    price_tags: [postedLandPrice, plp]
+    code_tags: [representedLandCode, rlc]
+    source_crs:
+      - {from: 1983, to: 2023, epsg: 4612, axis_order: latitude_longitude}
+      - {from: 2024, to: 2026, epsg: 6668, axis_order: latitude_longitude}
+    schema_eras:
+      - {from: 1983, to: 2013, name: l01_1983_2013}
+      - {from: 2014, to: 2017, name: l01_2014_2017}
+      - {from: 2018, to: 2021, name: l01_2018_2021}
+      - {from: 2022, to: 2023, name: l01_2022_2023}
+      - {from: 2024, to: 2026, name: l01_2024_plus}
+    shapefile_fields:
+      - {from: 1983, to: 2017, admin: L01_017, index: L01_001, sequence: L01_002, price: L01_006}
+      - {from: 2018, to: 2021, admin: L01_021, index: L01_001, sequence: L01_002, price: L01_006}
+      - {from: 2022, to: 2023, admin: L01_022, index: L01_001, sequence: L01_002, price: L01_006}
+      - {from: 2024, to: 2026, admin: L01_001, index: L01_002, sequence: L01_003, price: L01_008}
+
+  prefectural_land_price_survey:
+    prefix: L02
+    known_years: [1983, 2025]
+    reference_month: 7
+    reference_day: 1
+    feature_names:
+      - PrefectureLandPriceResearch
+      - PrefectureLandPriceResearchPkg.PrefectureLandPriceResearch
+    price_tags: [surveyedPrice]
+    code_tags: [standardLandCode, StandardLandCode]
+    source_crs:
+      - {from: 1983, to: 2022, epsg: 4612, axis_order: latitude_longitude}
+      - {from: 2023, to: 2025, epsg: 6668, axis_order: latitude_longitude}
+    schema_eras:
+      - {from: 1983, to: 2012, name: l02_1983_2012}
+      - {from: 2013, to: 2016, name: l02_2013_2016}
+      - {from: 2017, to: 2020, name: l02_2017_2020}
+      - {from: 2021, to: 2022, name: l02_2021_2022}
+      - {from: 2023, to: 2025, name: l02_2023_plus}
+    shapefile_fields:
+      - {from: 1983, to: 2011, admin: L01_017, index: L01_001, sequence: L01_002, price: L01_006}
+      - {from: 2012, to: 2016, admin: L02_017, index: L02_001, sequence: L02_002, price: L02_006}
+      - {from: 2017, to: 2020, admin: L02_021, index: L02_001, sequence: L02_002, price: L02_006}
+      - {from: 2021, to: 2025, admin: L02_020, index: L02_001, sequence: L02_002, price: L02_006}
+
+aliases:
+  year: [year, ye3]
+  administrative_area_code: [administrativeAreaCode, aac]
+  index_number: [indexNumber, idn]
+  sequence_number: [sequenceNumber, rls]
+  location_legacy: [address, as1]
+  area: [acreage, ac1]
+  current_use: [currentUse, pu1]
+  current_use_detail: [usageDescription, ud1]
+  building_structure: [buildingStructure, bs1]
+  water: [waterFacility, waf]
+  gas: [gasFacility, gaf]
+  sewage: [sewageFacility, sef]
+  nearest_transport_name: [nameOfNearestStation, nns]
+  transport_distance: [distanceFromStation, ds1]
+  legacy_legal_restrictions: [restrictionByCityPlanningLaw, rcl]
+  building_coverage: [buildingCoverage, bc1]
+  floor_area_ratio: [floorAreaRatio, fr1]
+  altitude_district: [altitudeDistrict, altitudeDistric]
+
+coarse_codes:
+  usage_class:
+    building_site: ['001']
+    rice_field: ['002']
+    field: ['003']
+    forest: ['005', '201', '202', '203']
+    other_open_land: ['004']
+  front_road:
+    national: ['1']
+    prefectural: ['2']
+    municipal: ['3']
+    private: ['4']
+    other_road: ['5']
+    planned_street: ['6']
+  shape:
+    quadrilateral: ['1', '2', '3', '4', "\u56db\u89d2\u5f62", "\u6b63\u65b9\u5f62", "\u9577\u65b9\u5f62"]
+    trapezoid: ['5', '6', "\u53f0\u5f62"]
+    irregular: ['7', "\u4e0d\u6574\u5f62"]
+
+sentinels:
+  prefectural_transport_distance:
+    '0': at_station
+    '1': adjacent_to_station
+  front_road_width:
+    '0': no_road
+    '999.9': station_square
+  reported_percent:
+    '0': not_reported_or_not_applicable
+
+exceptions:
+  prefectural_land_price_survey_2013_road_width:
+    official_page_unit: cm
+    interpreted_unit: m
+    status: inferred_unit_m
+    reason: observed values and the next product specification indicate metres
+    review_condition: new primary evidence resolves the unit discrepancy
+  prefectural_land_price_survey_2019_structure:
+    adapter: embedded_gi_point
+  misspelled_altitude_district:
+    accepted_tags: [altitudeDistrict, altitudeDistric]

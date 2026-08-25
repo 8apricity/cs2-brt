@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ksj:Dataset
+  xmlns:ksj="http://example.test/ksj"
+  xmlns:gml="http://www.opengis.net/gml"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gml:Point gml:id="pt1">
+    <gml:pos>36.50000000 140.50000000</gml:pos>
+  </gml:Point>
+  <ksj:LandPrice gml:id="fixture-l01-2012-1">
+    <ksj:rlc>
+      <ksj:RepresentedLandCode>
+        <ksj:idn>005</ksj:idn>
+        <ksj:rls>007</ksj:rls>
+      </ksj:RepresentedLandCode>
+    </ksj:rlc>
+    <ksj:ye3><gml:TimeInstant><gml:timePosition>2012</gml:timePosition></gml:TimeInstant></ksj:ye3>
+    <ksj:pos xlink:href="#pt1" />
+    <ksj:plp>54321</ksj:plp>
+    <ksj:aac>08202</ksj:aac>
+    <ksj:cnl>架空市</ksj:cnl>
+    <ksj:as1>架空町1-2</ksj:as1>
+    <ksj:ac1>123</ksj:ac1>
+    <ksj:pu1>住宅</ksj:pu1>
+    <ksj:ud1>戸建住宅</ksj:ud1>
+    <ksj:bs1>W2</ksj:bs1>
+    <ksj:waf>1</ksj:waf>
+    <ksj:gaf>0</ksj:gaf>
+    <ksj:sef>1</ksj:sef>
+    <ksj:nns>架空駅</ksj:nns>
+    <ksj:ds1>800</ksj:ds1>
+    <ksj:rcl>第一種住居地域</ksj:rcl>
+    <ksj:bc1>60</ksj:bc1>
+    <ksj:fr1>200</ksj:fr1>
+    <ksj:historicalValue>999</ksj:historicalValue>
+  </ksj:LandPrice>
+</ksj:Dataset>

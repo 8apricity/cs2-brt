@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ksj:Dataset
+  xmlns:ksj="http://example.test/ksj"
+  xmlns:gml="http://www.opengis.net/gml"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gml:Point gml:id="pt1"><gml:pos>36.70000000 140.70000000</gml:pos></gml:Point>
+  <ksj:PrefectureLandPriceResearch gml:id="fixture-l02-2013-1">
+    <ksj:standardLandCode>
+      <ksj:StandardLandCode>
+        <ksj:indexNumber>020</ksj:indexNumber>
+        <ksj:sequenceNumber>021</ksj:sequenceNumber>
+      </ksj:StandardLandCode>
+    </ksj:standardLandCode>
+    <ksj:year><gml:TimeInstant><gml:timePosition>2013</gml:timePosition></gml:TimeInstant></ksj:year>
+    <ksj:position xlink:href="#pt1" />
+    <ksj:surveyedPrice>40000</ksj:surveyedPrice>
+    <ksj:administrativeAreaCode>08202</ksj:administrativeAreaCode>
+    <ksj:cityName>架空市</ksj:cityName>
+    <ksj:address>架空町5-6</ksj:address>
+    <ksj:acreage>200</ksj:acreage>
+    <ksj:currentUse>住宅</ksj:currentUse>
+    <ksj:currentUse>店舗</ksj:currentUse>
+    <ksj:usageClassification>999</ksj:usageClassification>
+    <ksj:buildingStructure>RC3F1B</ksj:buildingStructure>
+    <ksj:waterFacility>1</ksj:waterFacility>
+    <ksj:gasFacility>0</ksj:gasFacility>
+    <ksj:sewageFacility>1</ksj:sewageFacility>
+    <ksj:frontalRoad>3</ksj:frontalRoad>
+    <ksj:configuration>1</ksj:configuration>
+    <ksj:directionOfFrontalRoad>2</ksj:directionOfFrontalRoad>
+    <ksj:widthOfFrontalRoad>4.0</ksj:widthOfFrontalRoad>
+    <ksj:pavementOfFrontalRoad>舗装</ksj:pavementOfFrontalRoad>
+    <ksj:distanceFromStation>0</ksj:distanceFromStation>
+    <ksj:buildingCoverage>60</ksj:buildingCoverage>
+    <ksj:floorAreaRatio>200</ksj:floorAreaRatio>
+  </ksj:PrefectureLandPriceResearch>
+</ksj:Dataset>

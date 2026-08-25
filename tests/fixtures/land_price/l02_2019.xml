@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<apf:GI
+  xmlns:apf="http://example.test/apf"
+  xmlns:gml="http://www.opengis.net/gml">
+  <apf:PrefectureLandPriceResearchPkg.PrefectureLandPriceResearch gml:id="fixture-l02-2019-1">
+    <apf:Point>
+      <apf:GM_Point.position>
+        <apf:DirectPosition>
+          <apf:DirectPosition.coordinate>36.60000000 140.60000000</apf:DirectPosition.coordinate>
+        </apf:DirectPosition>
+      </apf:GM_Point.position>
+    </apf:Point>
+    <apf:indexNumber>010</apf:indexNumber>
+    <apf:sequenceNumber>011</apf:sequenceNumber>
+    <apf:year>2019</apf:year>
+    <apf:surveyedPrice>45678</apf:surveyedPrice>
+    <apf:administrativeAreaCode>08202</apf:administrativeAreaCode>
+    <apf:cityName>架空市</apf:cityName>
+    <apf:address>架空町3-4</apf:address>
+    <apf:acreage>456</apf:acreage>
+    <apf:currentUse>店舗</apf:currentUse>
+  </apf:PrefectureLandPriceResearchPkg.PrefectureLandPriceResearch>
+</apf:GI>

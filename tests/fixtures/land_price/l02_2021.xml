@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Dataset xmlns:gml="http://www.opengis.net/gml" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gml:Point gml:id="pt1"><gml:pos>36.62 140.62</gml:pos></gml:Point>
+  <PrefectureLandPriceResearch gml:id="fixture-l02-2021-1">
+    <standardLandCode><StandardLandCode><indexNumber>000</indexNumber><sequenceNumber>001</sequenceNumber></StandardLandCode></standardLandCode>
+    <year><gml:TimeInstant><gml:timePosition>2021</gml:timePosition></gml:TimeInstant></year>
+    <position xlink:href="#pt1"/><surveyedPrice>32000</surveyedPrice><administrativeAreaCode>08202</administrativeAreaCode>
+    <location>架空町2番</location><address>架空町2-2</address><acreage>100</acreage><usageClassification>001</usageClassification>
+  </PrefectureLandPriceResearch>
+</Dataset>

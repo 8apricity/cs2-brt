@@ -11,6 +11,7 @@ Imports:
     forcats,
     ggplot2,
     here,
+    jsonlite,
     knitr,
     lintr,
     modelsummary,
@@ -23,5 +24,8 @@ Imports:
     targets,
     testthat (>= 3.0.0),
     tibble,
-    tidyr
+    tidyr,
+    withr,
+    xml2,
+    yaml
 Config/testthat/edition: 3

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Dataset xmlns:gml="http://www.opengis.net/gml" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gml:Point gml:id="pt1"><gml:pos>36.54 140.54</gml:pos></gml:Point>
+  <LandPrice gml:id="fixture-l01-2026-1">
+    <representedLandCode><RepresentedLandCode><administrativeAreaCode>08202</administrativeAreaCode><indexNumber>000</indexNumber><sequenceNumber>001</sequenceNumber></RepresentedLandCode></representedLandCode>
+    <year><gml:TimeInstant><gml:timePosition>2026</gml:timePosition></gml:TimeInstant></year>
+    <position xlink:href="#pt1"/><postedLandPrice>54000</postedLandPrice><location>架空町1番</location><address>架空町1-1</address><acreage>100</acreage>
+    <altitudeDistric>0</altitudeDistric>
+  </LandPrice>
+</Dataset>

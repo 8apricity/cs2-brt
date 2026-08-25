@@ -11,11 +11,14 @@
 - [研究概要](docs/research_overview.md)
 - [介入履歴](docs/intervention_timeline.md)
 - [データ台帳](docs/data_catalog.md)
+- [地価データ加工仕様](docs/data_processing.md)
 - [識別上の課題](docs/identification_risks.md)
 - [分析手法の候補](docs/method_candidates.md)
 - [意思決定ログ](docs/decision_logs/README.md)
 
-現在の `_targets.R`、`R/functions.R`、`index.qmd` は、サンプルデータを使う動作確認用の雛形です。ひたちBRTの実分析はまだ実装されていません。
+現在の`_targets.R`と`R/functions.R`は、地価公示・都道府県地価調査の全収録年度を
+標準化して`data/processed/`へ出力する。年度横断の地点同定やひたちBRTの実分析は
+まだ実装していない。`index.qmd`はレポート雛形であり、現在のパイプラインには含めない。
 
 ## ディレクトリ構成
 
@@ -30,8 +33,9 @@
 │   └── processed/      # コードから再生成する加工済みデータ
 ├── scripts/            # 初期化・補助スクリプト
 ├── tests/testthat/     # 単体テスト
-├── _targets.R          # 解析パイプライン（現在は雛形）
-├── index.qmd           # Quartoレポート（現在は雛形）
+├── config/             # 地価列辞書・年度別対応表
+├── _targets.R          # 地価標準データ生成パイプライン
+├── index.qmd           # 将来のレポート用雛形
 └── renv.lock           # 依存関係の固定
 ```
 
@@ -64,7 +68,7 @@ renv::restore()
 ## 日常のワークフロー
 
 ```r
-# 解析とレポートを更新
+# 地価標準データを更新
 targets::tar_make()
 
 # 変更された／古くなった処理を確認
@@ -82,7 +86,9 @@ for (path in c("R", "tests", "scripts")) styler::style_dir(path)
 styler::style_file("_targets.R")
 ```
 
-Quarto レポートは `targets::tar_make()` によって `_site/index.html` へ出力されます。
+`targets::tar_make()`は地価公示と都道府県地価調査について、GeoPackage、観測CSV、
+補助属性CSV、年度メタデータCSV、品質CSVを`data/processed/`へ生成する。詳細は
+[地価データ加工仕様](docs/data_processing.md)を参照する。
 
 ## データの取り扱い
 
