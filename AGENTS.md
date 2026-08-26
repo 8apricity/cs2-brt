@@ -63,3 +63,13 @@ AIの推奨や作業上の仮定を、独断で研究上の決定として記録
 ## 現在の解析コード
 
 `_targets.R`と`R/functions.R`は、地価公示・都道府県地価調査を標準化して`data/processed/`へ生成する。加工仕様は[`docs/data_processing.md`](docs/data_processing.md)を読む。`index.qmd`はレポート雛形であり、ひたちBRTの実分析はまだ実装していない。
+
+## Changes
+
+When making changes:
+
+1. Run the relevant verification commands.
+2. Commit only the files changed for that task.
+3. Push the task branch.
+4. Fetch the latest `origin/main`, merge the completed task branch into `main`, and push `main`. Prefer a fast-forward merge when the task branch is directly based on the latest `main`.
+5. In the final response, state the commit title, task branch, merge result, and both push statuses.
