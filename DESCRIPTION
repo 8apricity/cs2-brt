@@ -11,6 +11,7 @@ Imports:
     forcats,
     ggplot2,
     here,
+    igraph,
     jsonlite,
     knitr,
     lintr,

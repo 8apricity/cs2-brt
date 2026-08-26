@@ -1,0 +1,30 @@
+diff --git a/DESCRIPTION b/DESCRIPTION
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -1,6 +1,6 @@
+ Package: augsynth
+ Title: The Augmented Synthetic Control Method
+-Version: 0.2.0
++Version: 0.2.0.9000
+ Authors@R: person("Eli", "Ben-Michael", email = "ebenmichael@berkeley.edu", role = c("aut", "cre"))
+ Description: A package implementing the Augmented Synthetic Controls Method.
+ Depends:
+@@ -36,3 +36,5 @@ Suggests:
+     kableExtra,
+     ggrepel
+ VignetteBuilder: knitr
++Config/cs2brt/upstream-sha: 7a90ea48877fae7925a72cb50bc03a315bc7c042
++Config/cs2brt/patch: dplyr-1.2-pull-compatibility
+diff --git a/R/augsynth.R b/R/augsynth.R
+--- a/R/augsynth.R
++++ b/R/augsynth.R
+@@ -78,7 +78,7 @@ single_augsynth <- function(form, unit, time, t_int, data,
+     augsynth$t_int <- t_int
+     augsynth$weights <- matrix(augsynth$weights)
+     rownames(augsynth$weights) <- control_units
+     augsynth$trt_unit <- data %>% filter(!!as.name(trt) == 1) %>%
+-        pull(quo_name(unit)) %>% unique()
++        pull(!!unit) %>% unique()
+     augsynth$time_var <- quo_name(time)
+     augsynth$unit_var <- quo_name(unit)
+     augsynth$raw_data <- data

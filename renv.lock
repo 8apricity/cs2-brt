@@ -463,8 +463,8 @@
     },
     "augsynth": {
       "Package": "augsynth",
-      "Version": "0.2.0",
-      "Source": "GitHub",
+      "Version": "0.2.0.9000",
+      "Source": "Local",
       "Title": "The Augmented Synthetic Control Method",
       "Authors@R": "person(\"Eli\", \"Ben-Michael\", email = \"ebenmichael@berkeley.edu\", role = c(\"aut\", \"cre\"))",
       "Description": "A package implementing the Augmented Synthetic Controls Method.",
@@ -504,14 +504,13 @@
         "ggrepel"
       ],
       "VignetteBuilder": "knitr",
+      "Config/cs2brt/upstream-sha": "7a90ea48877fae7925a72cb50bc03a315bc7c042",
+      "Config/cs2brt/patch": "dplyr-1.2-pull-compatibility",
+      "NeedsCompilation": "no",
       "Author": "Eli Ben-Michael [aut, cre]",
       "Maintainer": "Eli Ben-Michael <ebenmichael@berkeley.edu>",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteUsername": "ebenmichael",
-      "RemoteRepo": "augsynth",
-      "RemoteRef": "master",
-      "RemoteSha": "7a90ea48877fae7925a72cb50bc03a315bc7c042",
+      "RemoteType": "local",
+      "RemoteUrl": "vendor/augsynth/augsynth_0.2.0.9000.tar.gz",
       "Remotes": "susanathey/MCPanel"
     },
     "backports": {
