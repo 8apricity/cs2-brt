@@ -1,0 +1,3 @@
+stop_id,validation_date,validation_source,validation_method,validated_by,latitude,longitude,note
+H1,2026-08-27,Google Street View,visual inspection,user,36.50989433936641,140.61927824124965,ユーザーが中沢停留所の位置を確認
+H2,2026-08-27,Google Street View,visual inspection,user,36.51308375258669,140.62042132236652,ユーザーが旧・大甕駅前停留所の位置を確認

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ksj:Dataset
+  xmlns:gml="http://www.opengis.net/gml/3.2"
+  xmlns:ksj="http://nlftp.mlit.go.jp/ksj/schemas/ksj-app"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+>
+  <gml:Point gml:id="n1">
+    <gml:pos>36.50000000 140.60000000</gml:pos>
+  </gml:Point>
+  <gml:Point gml:id="n2">
+    <gml:pos>36.51000000 140.61000000</gml:pos>
+  </gml:Point>
+  <gml:Point gml:id="n3">
+    <gml:pos>36.52000000 140.62000000</gml:pos>
+  </gml:Point>
+  <ksj:BusStop gml:id="bs1">
+    <ksj:loc xlink:href="#n1"/>
+    <ksj:bsn>第Ⅰ期現存</ksj:bsn>
+    <ksj:boc>架空バス株式会社</ksj:boc>
+  </ksj:BusStop>
+  <ksj:BusStop gml:id="bs2">
+    <ksj:loc xlink:href="#n2"/>
+    <ksj:bsn>第Ⅰ期歴史</ksj:bsn>
+    <ksj:boc>架空バス株式会社</ksj:boc>
+  </ksj:BusStop>
+  <ksj:BusStop gml:id="bs3">
+    <ksj:loc xlink:href="#n3"/>
+    <ksj:bsn>第Ⅱ期現存</ksj:bsn>
+    <ksj:boc>架空バス株式会社</ksj:boc>
+  </ksj:BusStop>
+</ksj:Dataset>

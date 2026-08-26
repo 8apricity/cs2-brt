@@ -1,0 +1,2 @@
+stop_id,validation_date,validation_source,validation_method,validated_by,latitude,longitude,note
+H1,2026-08-27,Google Street View,visual inspection,user,36.51000000,140.61000000,Fixture validation

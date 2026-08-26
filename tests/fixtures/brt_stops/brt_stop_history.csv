@@ -1,0 +1,4 @@
+stop_id,stop_name,xml_name,start_date,end_date,phase,current,confidence
+1,第Ⅰ期現存,第Ⅰ期現存,2013-03-25,,phase1,TRUE,high
+H1,第Ⅰ期歴史,第Ⅰ期歴史,2013-03-25,2019-03-31,historical_phase1,FALSE,high
+2,第Ⅱ期現存,第Ⅱ期現存,2018-03-26,,phase2_preview,TRUE,high

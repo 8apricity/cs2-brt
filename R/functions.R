@@ -1492,3 +1492,418 @@ process_land_price_dataset <- function(
   promote_staged_outputs(staged_paths, final_paths)
   final_paths
 }
+
+read_brt_stop_history <- function(file) {
+  required_columns <- c(
+    "stop_id", "stop_name", "xml_name", "start_date", "end_date",
+    "phase", "current", "confidence"
+  )
+  history <- readr::read_csv(
+    file,
+    col_types = readr::cols(
+      .default = readr::col_character(),
+      current = readr::col_logical()
+    ),
+    show_col_types = FALSE
+  )
+  missing_columns <- setdiff(required_columns, names(history))
+  if (length(missing_columns) > 0L) {
+    stop(
+      "BRT stop history is missing columns: ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  history <- history[, required_columns]
+  if (
+    any(is.na(history$stop_id) | !nzchar(history$stop_id)) ||
+      anyDuplicated(history$stop_id)
+  ) {
+    stop("BRT stop_id values must be present and unique.", call. = FALSE)
+  }
+  if (
+    any(is.na(history$xml_name) | !nzchar(history$xml_name)) ||
+      anyDuplicated(history$xml_name)
+  ) {
+    stop("BRT xml_name values must be present and unique.", call. = FALSE)
+  }
+
+  start_date_raw <- history$start_date
+  end_date_raw <- history$end_date
+  history$start_date <- as.Date(start_date_raw)
+  history$end_date <- as.Date(end_date_raw)
+  invalid_start <- !is.na(start_date_raw) & nzchar(start_date_raw) &
+    is.na(history$start_date)
+  invalid_end <- !is.na(end_date_raw) & nzchar(end_date_raw) &
+    is.na(history$end_date)
+  if (
+    any(invalid_start) || any(invalid_end) || any(is.na(history$start_date)) ||
+      any(!is.na(history$end_date) & history$end_date < history$start_date)
+  ) {
+    stop("BRT stop history contains invalid dates.", call. = FALSE)
+  }
+  if (any(is.na(history$current))) {
+    stop("BRT stop history contains missing current values.", call. = FALSE)
+  }
+  history$phase1_initial <- history$start_date == as.Date("2013-03-25") &
+    history$phase %in% c("phase1", "historical_phase1")
+  as.data.frame(history, stringsAsFactors = FALSE)
+}
+
+read_brt_coordinate_validation <- function(file) {
+  required_columns <- c(
+    "stop_id", "validation_date", "validation_source", "validation_method",
+    "validated_by", "latitude", "longitude", "note"
+  )
+  validation <- readr::read_csv(
+    file,
+    col_types = readr::cols(
+      .default = readr::col_character(),
+      latitude = readr::col_double(),
+      longitude = readr::col_double()
+    ),
+    show_col_types = FALSE
+  )
+  missing_columns <- setdiff(required_columns, names(validation))
+  if (length(missing_columns) > 0L) {
+    stop(
+      "BRT coordinate validation is missing columns: ",
+      paste(missing_columns, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  validation <- validation[, required_columns]
+  if (
+    any(is.na(validation$stop_id) | !nzchar(validation$stop_id)) ||
+      anyDuplicated(validation$stop_id)
+  ) {
+    stop("Validated BRT stop_id values must be present and unique.", call. = FALSE)
+  }
+  provenance_columns <- c(
+    "validation_source", "validation_method", "validated_by"
+  )
+  missing_provenance <- vapply(provenance_columns, function(column) {
+    values <- validation[[column]]
+    any(is.na(values) | !nzchar(trimws(values)))
+  }, logical(1))
+  if (any(missing_provenance)) {
+    stop(
+      "BRT coordinate validation source and method must be recorded.",
+      call. = FALSE
+    )
+  }
+  validation_date_raw <- validation$validation_date
+  validation$validation_date <- as.Date(validation_date_raw)
+  invalid_date <- !is.na(validation_date_raw) & nzchar(validation_date_raw) &
+    is.na(validation$validation_date)
+  if (any(invalid_date) || any(is.na(validation$validation_date))) {
+    stop("BRT coordinate validation contains invalid dates.", call. = FALSE)
+  }
+  if (
+    any(!is.finite(validation$latitude)) ||
+      any(!is.finite(validation$longitude)) ||
+      any(validation$longitude < 120 | validation$longitude > 155) ||
+      any(validation$latitude < 20 | validation$latitude > 50)
+  ) {
+    stop("Validated BRT coordinates fall outside Japan.", call. = FALSE)
+  }
+  as.data.frame(validation, stringsAsFactors = FALSE)
+}
+
+brt_point_index <- function(document) {
+  nodes <- xml2::xml_find_all(document, "//*")
+  nodes <- nodes[vapply(nodes, xml_local_name, character(1)) == "Point"]
+  ids <- vapply(nodes, xml_first_attribute_ending, character(1), suffix = "id")
+  if (any(is.na(ids) | !nzchar(ids)) || anyDuplicated(ids)) {
+    stop("BRT source Point IDs must be present and unique.", call. = FALSE)
+  }
+  stats::setNames(as.list(nodes), ids)
+}
+
+brt_point_coordinate <- function(point) {
+  positions <- xml_direct_children_named(point, "pos")
+  values <- xml_nonempty_text(positions)
+  if (length(values) != 1L) {
+    stop("A BRT source Point must have exactly one coordinate.", call. = FALSE)
+  }
+  parts <- strsplit(values[[1L]], "[[:space:],]+")[[1L]]
+  parts <- parts[nzchar(parts)]
+  if (length(parts) != 2L) {
+    stop("Expected a BRT latitude/longitude coordinate pair.", call. = FALSE)
+  }
+  coordinate <- as.numeric(parts)
+  if (any(!is.finite(coordinate))) {
+    stop("A BRT source Point has a non-numeric coordinate.", call. = FALSE)
+  }
+  c(latitude = coordinate[[1L]], longitude = coordinate[[2L]])
+}
+
+parse_brt_stop_xml <- function(file, history) {
+  document <- xml2::read_xml(file)
+  all_nodes <- xml2::xml_find_all(document, "//*")
+  features <- all_nodes[
+    vapply(all_nodes, xml_local_name, character(1)) == "BusStop"
+  ]
+  source_names <- vapply(features, function(feature) {
+    xml_first_direct_text(feature, "bsn")
+  }, character(1))
+  points <- brt_point_index(document)
+
+  rows <- lapply(history$xml_name, function(xml_name) {
+    matches <- which(!is.na(source_names) & source_names == xml_name)
+    if (length(matches) != 1L) {
+      stop(
+        "BRT xml_name must match exactly one source feature: ",
+        xml_name,
+        " (matched ",
+        length(matches),
+        ")",
+        call. = FALSE
+      )
+    }
+    feature <- features[[matches[[1L]]]]
+    location <- xml_direct_children_named(feature, "loc")
+    if (length(location) != 1L) {
+      stop("A BRT source feature must have exactly one Point reference.", call. = FALSE)
+    }
+    point_id <- xml_first_attribute_ending(location[[1L]], "href")
+    point_id <- sub("^#", "", point_id)
+    if (is.na(point_id) || !nzchar(point_id) || !point_id %in% names(points)) {
+      stop("A BRT source Point reference could not be resolved.", call. = FALSE)
+    }
+    coordinate <- brt_point_coordinate(points[[point_id]])
+    operators <- unique(xml_all_direct_text(feature, "boc"))
+    data.frame(
+      source_feature_id = xml_first_attribute_ending(feature, "id"),
+      source_point_id = point_id,
+      source_operator = if (length(operators) == 0L) {
+        NA_character_
+      } else {
+        paste(operators, collapse = " | ")
+      },
+      longitude = unname(coordinate[["longitude"]]),
+      latitude = unname(coordinate[["latitude"]]),
+      stringsAsFactors = FALSE
+    )
+  })
+  result <- do.call(rbind, rows)
+  rownames(result) <- NULL
+  result
+}
+
+haversine_distance_m <- function(latitude_1, longitude_1, latitude_2, longitude_2) {
+  radians <- pi / 180
+  latitude_delta <- (latitude_2 - latitude_1) * radians
+  longitude_delta <- (longitude_2 - longitude_1) * radians
+  value <- sin(latitude_delta / 2)^2 +
+    cos(latitude_1 * radians) * cos(latitude_2 * radians) *
+      sin(longitude_delta / 2)^2
+  6371000 * 2 * atan2(sqrt(value), sqrt(1 - value))
+}
+
+attach_brt_validation <- function(stops, validation) {
+  unknown_ids <- setdiff(validation$stop_id, stops$stop_id)
+  if (length(unknown_ids) > 0L) {
+    stop(
+      "Coordinate validation refers to unknown BRT stop_id values: ",
+      paste(unknown_ids, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  validation_index <- match(stops$stop_id, validation$stop_id)
+  has_validation <- !is.na(validation_index)
+  matched <- validation[validation_index, , drop = FALSE]
+
+  stops$coordinate_source <- paste0(
+    "national_land_numerical_information_bus_stops_2022"
+  )
+  stops$historical_validation_status <- ifelse(
+    has_validation,
+    "user_verified",
+    ifelse(
+      stops$phase1_initial,
+      "provisional",
+      "not_required_for_phase1_analysis"
+    )
+  )
+  stops$historical_validation_method <- matched$validation_method
+  stops$historical_validation_source <- matched$validation_source
+  stops$historical_validation_date <- matched$validation_date
+  stops$historical_validation_by <- matched$validated_by
+  stops$validation_latitude <- matched$latitude
+  stops$validation_longitude <- matched$longitude
+  stops$validation_note <- matched$note
+  coordinates <- sf::st_coordinates(stops)
+  stops$validation_distance_m <- haversine_distance_m(
+    coordinates[, "Y"],
+    coordinates[, "X"],
+    stops$validation_latitude,
+    stops$validation_longitude
+  )
+  stops
+}
+
+validate_brt_stops <- function(
+  stops,
+  expected_stop_count,
+  expected_phase1_initial_count,
+  expected_current_count
+) {
+  if (nrow(stops) != expected_stop_count) {
+    stop("Unexpected BRT stop count.", call. = FALSE)
+  }
+  if (anyDuplicated(stops$stop_id) || anyDuplicated(stops$source_feature_id)) {
+    stop("Processed BRT stop identifiers must be unique.", call. = FALSE)
+  }
+  if (sum(stops$phase1_initial) != expected_phase1_initial_count) {
+    stop("Unexpected initial Phase I BRT stop count.", call. = FALSE)
+  }
+  if (sum(stops$current) != expected_current_count) {
+    stop("Unexpected current BRT stop count.", call. = FALSE)
+  }
+  historical_phase1 <- stops$phase1_initial &
+    stops$phase == "historical_phase1"
+  if (any(
+    stops$historical_validation_status[historical_phase1] != "user_verified"
+  )) {
+    stop("Historical Phase I BRT stops require coordinate validation.", call. = FALSE)
+  }
+  if (
+    sf::st_crs(stops)$epsg != 6668L || any(sf::st_is_empty(stops)) ||
+      any(!sf::st_is_valid(stops))
+  ) {
+    stop("Processed BRT stop geometry is invalid.", call. = FALSE)
+  }
+  coordinates <- sf::st_coordinates(stops)
+  if (
+    any(coordinates[, "X"] < 120 | coordinates[, "X"] > 155) ||
+      any(coordinates[, "Y"] < 20 | coordinates[, "Y"] > 50)
+  ) {
+    stop("Processed BRT coordinates fall outside Japan.", call. = FALSE)
+  }
+  invisible(stops)
+}
+
+brt_duplicate_coord_groups <- function(stops) {
+  coordinates <- sf::st_coordinates(stops)
+  keys <- paste(
+    format(coordinates[, "X"], digits = 15, trim = TRUE),
+    format(coordinates[, "Y"], digits = 15, trim = TRUE),
+    sep = ":"
+  )
+  sum(table(keys) > 1L)
+}
+
+brt_stop_quality_row <- function(stops) {
+  coordinates <- sf::st_coordinates(stops)
+  validation_distance <- stops$validation_distance_m
+  data.frame(
+    source_dataset = "national_land_numerical_information_bus_stops",
+    source_year = 2022L,
+    status = "passed",
+    stop_count = nrow(stops),
+    matched_stop_count = sum(!is.na(stops$source_feature_id)),
+    current_stop_count = sum(stops$current),
+    phase1_initial_count = sum(stops$phase1_initial),
+    user_verified_count = sum(
+      stops$historical_validation_status == "user_verified"
+    ),
+    provisional_count = sum(
+      stops$historical_validation_status == "provisional"
+    ),
+    not_required_count = sum(
+      stops$historical_validation_status ==
+        "not_required_for_phase1_analysis"
+    ),
+    duplicate_coordinate_group_count = brt_duplicate_coord_groups(
+      stops
+    ),
+    minimum_longitude = min(coordinates[, "X"]),
+    maximum_longitude = max(coordinates[, "X"]),
+    minimum_latitude = min(coordinates[, "Y"]),
+    maximum_latitude = max(coordinates[, "Y"]),
+    maximum_validation_distance_m = if (all(is.na(validation_distance))) {
+      NA_real_
+    } else {
+      max(validation_distance, na.rm = TRUE)
+    },
+    stringsAsFactors = FALSE
+  )
+}
+
+brt_stop_output_paths <- function(output_dir) {
+  stats::setNames(
+    file.path(output_dir, c(
+      "brt_stops.gpkg",
+      "brt_stops.csv",
+      "brt_stops_quality.csv"
+    )),
+    c("geopackage", "stops_csv", "quality_csv")
+  )
+}
+
+write_brt_stop_staging <- function(staging_dir, stops, quality) {
+  paths <- brt_stop_output_paths(staging_dir)
+  suppressWarnings(sf::st_write(
+    stops,
+    paths[["geopackage"]],
+    layer = "stops",
+    delete_dsn = TRUE,
+    quiet = TRUE
+  ))
+  coordinates <- sf::st_coordinates(stops)
+  stops_csv <- sf::st_drop_geometry(stops)
+  stops_csv$longitude <- coordinates[, "X"]
+  stops_csv$latitude <- coordinates[, "Y"]
+  readr::write_csv(stops_csv, paths[["stops_csv"]], na = "")
+  readr::write_csv(quality, paths[["quality_csv"]], na = "")
+
+  layers <- sf::st_layers(paths[["geopackage"]])$name
+  if (!identical(layers, "stops") || !all(file.exists(paths))) {
+    stop("Staged BRT stop outputs failed validation.", call. = FALSE)
+  }
+  paths
+}
+
+process_brt_stops <- function(
+  history_file,
+  xml_file,
+  validation_file,
+  output_dir,
+  expected_stop_count = 42L,
+  expected_phase1_initial_count = 11L,
+  expected_current_count = 25L
+) {
+  history <- read_brt_stop_history(history_file)
+  source_rows <- parse_brt_stop_xml(xml_file, history)
+  stops <- cbind(history, source_rows)
+  stops$source_dataset <- "national_land_numerical_information_bus_stops"
+  stops$source_year <- 2022L
+  stops <- sf::st_as_sf(
+    stops,
+    coords = c("longitude", "latitude"),
+    crs = 6668,
+    remove = TRUE
+  )
+  validation <- read_brt_coordinate_validation(validation_file)
+  stops <- attach_brt_validation(stops, validation)
+  validate_brt_stops(
+    stops,
+    expected_stop_count,
+    expected_phase1_initial_count,
+    expected_current_count
+  )
+  quality <- brt_stop_quality_row(stops)
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  staging_dir <- tempfile(
+    pattern = ".brt-stops-staging-",
+    tmpdir = dirname(output_dir)
+  )
+  dir.create(staging_dir, recursive = TRUE)
+  on.exit(unlink(staging_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  staged_paths <- write_brt_stop_staging(staging_dir, stops, quality)
+  final_paths <- brt_stop_output_paths(output_dir)
+  promote_staged_outputs(staged_paths, final_paths)
+  final_paths
+}

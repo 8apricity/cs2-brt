@@ -66,5 +66,41 @@ list(
       )
     },
     format = "file"
+  ),
+  tar_target(
+    brt_stop_history_file,
+    here::here("data", "manual", "brt_stop_history.csv"),
+    format = "file"
+  ),
+  tar_target(
+    brt_stop_coordinate_validation_file,
+    here::here(
+      "data",
+      "manual",
+      "brt_stop_coordinate_validation.csv"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    brt_stop_2022_xml_file,
+    here::here(
+      "data",
+      "raw",
+      "bus_stops",
+      "P11-22_08_GML",
+      "P11-22_08_GML",
+      "P11-22_08.xml"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    brt_stop_outputs,
+    process_brt_stops(
+      history_file = brt_stop_history_file,
+      xml_file = brt_stop_2022_xml_file,
+      validation_file = brt_stop_coordinate_validation_file,
+      output_dir = here::here("data", "processed")
+    ),
+    format = "file"
   )
 )
