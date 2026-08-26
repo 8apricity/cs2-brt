@@ -175,6 +175,34 @@ testthat::test_that("source matching failures stop BRT processing", {
   )
 })
 
+testthat::test_that("source CRS and axis order are hard quality gates", {
+  root <- withr::local_tempdir()
+  source_xml <- readr::read_file(brt_fixture_path("p11_2022.xml"))
+  wrong_crs_xml <- sub(
+    "JGD2011 / (B, L)",
+    "JGD2000 / (B, L)",
+    source_xml,
+    fixed = TRUE
+  )
+  xml_file <- file.path(root, "wrong-crs.xml")
+  readr::write_file(wrong_crs_xml, xml_file)
+
+  testthat::expect_error(
+    process_brt_stops(
+      history_file = brt_fixture_path("brt_stop_history.csv"),
+      xml_file = xml_file,
+      validation_file = brt_fixture_path(
+        "brt_stop_coordinate_validation.csv"
+      ),
+      output_dir = file.path(root, "processed"),
+      expected_stop_count = 3L,
+      expected_phase1_initial_count = 2L,
+      expected_current_count = 2L
+    ),
+    "JGD2011.*latitude/longitude"
+  )
+})
+
 testthat::test_that("BRT stop counts are hard quality gates", {
   root <- withr::local_tempdir()
   testthat::expect_error(

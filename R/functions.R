@@ -1638,8 +1638,27 @@ brt_point_coordinate <- function(point) {
   c(latitude = coordinate[[1L]], longitude = coordinate[[2L]])
 }
 
+validate_brt_source_crs <- function(document) {
+  all_nodes <- xml2::xml_find_all(document, "//*")
+  envelopes <- all_nodes[
+    vapply(all_nodes, xml_local_name, character(1)) %in%
+      c("Envelope", "EnvelopeWithTimePeriod")
+  ]
+  source_crs <- unique(xml2::xml_attr(envelopes, "srsName"))
+  source_crs <- source_crs[!is.na(source_crs) & nzchar(source_crs)]
+  expected <- "JGD2011 / (B, L)"
+  if (length(source_crs) != 1L || !identical(source_crs, expected)) {
+    stop(
+      "BRT source XML must declare JGD2011 with latitude/longitude axis order.",
+      call. = FALSE
+    )
+  }
+  invisible(expected)
+}
+
 parse_brt_stop_xml <- function(file, history) {
   document <- xml2::read_xml(file)
+  validate_brt_source_crs(document)
   all_nodes <- xml2::xml_find_all(document, "//*")
   features <- all_nodes[
     vapply(all_nodes, xml_local_name, character(1)) == "BusStop"
@@ -1800,6 +1819,7 @@ brt_stop_quality_row <- function(stops) {
   data.frame(
     source_dataset = "national_land_numerical_information_bus_stops",
     source_year = 2022L,
+    source_crs = "JGD2011 / (B, L)",
     status = "passed",
     stop_count = nrow(stops),
     matched_stop_count = sum(!is.na(stops$source_feature_id)),

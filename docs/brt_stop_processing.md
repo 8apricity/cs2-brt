@@ -21,9 +21,10 @@ geometryの正本は公式XMLとし、手動確認座標で上書きしない。
 
 ## XMLの読取りと結合
 
-XMLの`BusStop/loc`参照を`Point`の`gml:id`へ解決し、`gml:pos`を緯度・経度の順で
-読む。履歴表の`xml_name`とXMLの`bsn`を完全一致で結合する。processedのgeometryは
-JGD2011（EPSG:6668）のPOINTとする。
+XMLの`EnvelopeWithTimePeriod@srsName`が`JGD2011 / (B, L)`であることを検証してから、
+`BusStop/loc`参照を`Point`の`gml:id`へ解決し、`gml:pos`を緯度・経度の順で読む。
+履歴表の`xml_name`とXMLの`bsn`を完全一致で結合する。processedのgeometryはJGD2011
+（EPSG:6668）のPOINTとする。
 
 2026年8月27日の実データ処理では、履歴42件がそれぞれ2022年XMLの1地物へ一意に
 結合した。対象内の同名と同一座標はなかった。XML全体の同名停留所には対応しない

@@ -4,6 +4,12 @@
   xmlns:ksj="http://nlftp.mlit.go.jp/ksj/schemas/ksj-app"
   xmlns:xlink="http://www.w3.org/1999/xlink"
 >
+  <gml:boundedBy>
+    <gml:EnvelopeWithTimePeriod srsName="JGD2011 / (B, L)">
+      <gml:lowerCorner>20.0 123.0</gml:lowerCorner>
+      <gml:upperCorner>46.0 154.0</gml:upperCorner>
+    </gml:EnvelopeWithTimePeriod>
+  </gml:boundedBy>
   <gml:Point gml:id="n1">
     <gml:pos>36.50000000 140.60000000</gml:pos>
   </gml:Point>
