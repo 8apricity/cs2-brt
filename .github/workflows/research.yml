@@ -23,7 +23,16 @@ jobs:
       - uses: quarto-dev/quarto-actions/setup@v2
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install --yes libglpk-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            cmake \
+            gdal-bin \
+            libgdal-dev \
+            libglpk-dev \
+            libudunits2-dev \
+            libx11-dev \
+            pandoc
 
       - uses: r-lib/actions/setup-renv@v2
 
