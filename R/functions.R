@@ -2012,291 +2012,313 @@ cluster_land_price_points <- function(
   )
 }
 
-first_observed_treatment_year <- function(
-  opening_date,
-  reference_month,
-  reference_day
-) {
-  opening_date <- as.Date(opening_date)
-  result <- rep(NA_integer_, length(opening_date))
-  available <- !is.na(opening_date)
-  opening_year <- as.integer(format(opening_date[available], "%Y"))
-  same_year_reference <- as.Date(sprintf(
-    "%04d-%02d-%02d",
-    opening_year,
-    reference_month,
-    reference_day
-  ))
-  result[available] <- opening_year + as.integer(
-    opening_date[available] > same_year_reference
-  )
-  result
-}
-
-assign_brt_treatment <- function(
-  point_locations,
-  stops,
-  treatment_radius_m,
-  reference_month,
-  reference_day,
+prepare_land_price_analysis_data <- function( # nolint: object_length_linter.
+  observations,
+  point_match_tolerance_m = 10,
   metric_crs = 6677
 ) {
-  if (!inherits(point_locations, "sf") || !inherits(stops, "sf")) {
-    stop("Point locations and BRT stops must be sf objects.", call. = FALSE)
+  required_columns <- c(
+    "observation_id",
+    "source_dataset",
+    "source_year"
+  )
+  if (!all(required_columns %in% names(observations))) {
+    stop("Land-price observations are missing analysis columns.", call. = FALSE)
   }
-  if (!all(c("stop_id", "start_date", "phase", "phase1_initial") %in%
-             names(stops))) {
-    stop("BRT stops do not contain treatment-history columns.", call. = FALSE)
+  if (nrow(observations) == 0L) {
+    stop("Land-price observations must not be empty.", call. = FALSE)
+  }
+  if (anyNA(observations$observation_id) ||
+        anyDuplicated(observations$observation_id)) {
+    stop("Land-price observation IDs must be complete and unique.", call. = FALSE)
+  }
+
+  source_datasets <- unique(observations$source_dataset)
+  source_datasets <- source_datasets[!is.na(source_datasets)]
+  if (length(source_datasets) != 1L || anyNA(observations$source_dataset)) {
+    stop(
+      "Land-price analysis data must contain exactly one source dataset.",
+      call. = FALSE
+    )
+  }
+
+  clustered <- cluster_land_price_points(
+    observations,
+    tolerance_m = point_match_tolerance_m,
+    metric_crs = metric_crs
+  )
+  cluster_id_map <- sf::st_drop_geometry(clustered$observations) |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::summarise(
+      minimum_observation_id = min(.data$observation_id),
+      .groups = "drop"
+    ) |>
+    dplyr::arrange(.data$minimum_observation_id) |>
+    dplyr::mutate(
+      stable_point_id = sprintf(
+        "%s_%05d",
+        source_datasets[[1L]],
+        dplyr::row_number()
+      )
+    )
+
+  observations_with_points <- clustered$observations
+  observations_with_points$point_id <- cluster_id_map$stable_point_id[
+    match(observations_with_points$point_id, cluster_id_map$point_id)
+  ]
+  point_year_counts <- observations_with_points |>
+    sf::st_drop_geometry() |>
+    dplyr::count(.data$point_id, .data$source_year, name = "point_year_observation_count")
+  point_year_panel <- observations_with_points |>
+    dplyr::left_join(
+      point_year_counts,
+      by = c("point_id", "source_year")
+    ) |>
+    dplyr::mutate(
+      duplicate_point_year = .data$point_year_observation_count > 1L
+    )
+
+  point_summaries <- point_year_panel |>
+    sf::st_drop_geometry() |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::summarise(
+      observation_count = dplyr::n(),
+      first_source_year = min(.data$source_year),
+      last_source_year = max(.data$source_year),
+      observed_year_count = dplyr::n_distinct(.data$source_year),
+      duplicate_point_year_count = sum(
+        !duplicated(.data$source_year) & .data$duplicate_point_year
+      ),
+      .groups = "drop"
+    )
+  point_registry <- clustered$points
+  point_registry$point_id <- cluster_id_map$stable_point_id[
+    match(point_registry$point_id, cluster_id_map$point_id)
+  ]
+  point_registry <- point_registry |>
+    dplyr::select("point_id", "maximum_displacement_m") |>
+    dplyr::left_join(point_summaries, by = "point_id") |>
+    dplyr::arrange(.data$point_id)
+
+  quality <- data.frame(
+    point_match_tolerance_m = point_match_tolerance_m,
+    clustered_point_count = nrow(point_registry),
+    duplicate_point_year_count = sum(point_year_counts$point_year_observation_count > 1L),
+    maximum_cluster_displacement_m = max(
+      point_registry$maximum_displacement_m
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  list(
+    point_year_panel = point_year_panel,
+    point_registry = point_registry,
+    quality = quality
+  )
+}
+
+calculate_point_stop_distances <- function(
+  point_registry,
+  stops,
+  metric_crs = 6677
+) {
+  if (!inherits(point_registry, "sf") || !inherits(stops, "sf")) {
+    stop("Point registry and BRT stops must be sf objects.", call. = FALSE)
+  }
+  if (!"point_id" %in% names(point_registry) ||
+        !"stop_id" %in% names(stops)) {
+    stop("Point registry or BRT stops are missing ID columns.", call. = FALSE)
+  }
+  if (nrow(point_registry) == 0L || nrow(stops) == 0L) {
+    stop("Point registry and BRT stops must not be empty.", call. = FALSE)
+  }
+  if (anyNA(point_registry$point_id) || anyDuplicated(point_registry$point_id) ||
+        anyNA(stops$stop_id) || anyDuplicated(stops$stop_id)) {
+    stop("Point and stop IDs must be complete and unique.", call. = FALSE)
+  }
+
+  point_metric <- sf::st_transform(point_registry, metric_crs)
+  stop_metric <- sf::st_transform(stops, metric_crs)
+  distance_matrix <- sf::st_distance(point_metric, stop_metric)
+
+  tidyr::expand_grid(
+    point_id = point_registry$point_id,
+    stop_id = stops$stop_id
+  ) |>
+    dplyr::mutate(
+      distance_m = as.numeric(t(distance_matrix))
+    )
+}
+
+filter_complete_point_panel <- function(point_year_panel, years) {
+  required_columns <- c("point_id", "source_year")
+  if (!all(required_columns %in% names(point_year_panel))) {
+    stop("Point-year panel is missing panel columns.", call. = FALSE)
+  }
+  years <- sort(unique(as.integer(years)))
+  if (length(years) == 0L || anyNA(years)) {
+    stop("Panel years must contain at least one non-missing year.", call. = FALSE)
+  }
+
+  point_year_counts <- point_year_panel |>
+    sf::st_drop_geometry() |>
+    dplyr::filter(.data$source_year %in% years) |>
+    dplyr::count(.data$point_id, .data$source_year, name = "n")
+  complete_ids <- point_year_counts |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::summarise(
+      observed_year_count = dplyr::n_distinct(.data$source_year),
+      one_observation_per_year = all(.data$n == 1L),
+      .groups = "drop"
+    ) |>
+    dplyr::filter(
+      .data$observed_year_count == length(years),
+      .data$one_observation_per_year
+    ) |>
+    dplyr::pull(.data$point_id)
+
+  point_year_panel |>
+    dplyr::filter(
+      .data$point_id %in% complete_ids,
+      .data$source_year %in% years
+    ) |>
+    dplyr::arrange(.data$point_id, .data$source_year)
+}
+
+derive_brt_exposure <- function(
+  point_stop_distances,
+  stops,
+  treatment_radius_m,
+  eligible_stop_ids = stops$stop_id
+) {
+  distance_columns <- c("point_id", "stop_id", "distance_m")
+  stop_columns <- c("stop_id", "start_date")
+  if (!all(distance_columns %in% names(point_stop_distances)) ||
+        !all(stop_columns %in% names(stops))) {
+    stop("BRT distance or stop data are missing exposure columns.", call. = FALSE)
   }
   if (!is.numeric(treatment_radius_m) || length(treatment_radius_m) != 1L ||
         is.na(treatment_radius_m) || treatment_radius_m <= 0) {
     stop("Treatment radius must be positive.", call. = FALSE)
   }
+  if (length(eligible_stop_ids) == 0L || anyNA(eligible_stop_ids)) {
+    stop("Eligible BRT stop IDs must be non-empty and complete.", call. = FALSE)
+  }
+  if (anyDuplicated(stops$stop_id) || anyNA(stops$stop_id)) {
+    stop("BRT stop IDs must be complete and unique.", call. = FALSE)
+  }
+  unknown_stop_ids <- setdiff(eligible_stop_ids, stops$stop_id)
+  if (length(unknown_stop_ids) > 0L) {
+    stop("Eligible BRT stop IDs are not present in the stop data.", call. = FALSE)
+  }
 
-  point_metric <- sf::st_transform(point_locations, metric_crs)
-  stop_metric <- sf::st_transform(stops, metric_crs)
-  distances <- sf::st_distance(point_metric, stop_metric)
-  distance_matrix <- matrix(
-    as.numeric(distances),
-    nrow = nrow(point_metric),
-    ncol = nrow(stop_metric)
+  stop_openings <- stops |>
+    sf::st_drop_geometry() |>
+    dplyr::transmute(
+      stop_id = .data$stop_id,
+      opening_date = as.Date(.data$start_date)
+    )
+  selected <- point_stop_distances |>
+    dplyr::filter(
+      .data$stop_id %in% eligible_stop_ids,
+      !is.na(.data$distance_m),
+      .data$distance_m <= treatment_radius_m
+    ) |>
+    dplyr::left_join(stop_openings, by = "stop_id") |>
+    dplyr::filter(!is.na(.data$opening_date)) |>
+    dplyr::arrange(
+      .data$point_id,
+      .data$opening_date,
+      .data$distance_m,
+      .data$stop_id
+    ) |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::slice_head(n = 1L) |>
+    dplyr::ungroup() |>
+    dplyr::select("point_id", "stop_id", "opening_date", "distance_m")
+
+  point_stop_distances |>
+    dplyr::distinct(.data$point_id) |>
+    dplyr::arrange(.data$point_id) |>
+    dplyr::left_join(selected, by = "point_id") |>
+    dplyr::mutate(exposed = !is.na(.data$stop_id), .after = "point_id") |>
+    dplyr::select(
+      "point_id",
+      "exposed",
+      "stop_id",
+      "opening_date",
+      "distance_m"
+    )
+}
+
+build_baseline_covariates <- function(
+  point_year_panel,
+  baseline_year,
+  columns = character()
+) {
+  required_columns <- c("point_id", "source_year")
+  if (!all(required_columns %in% names(point_year_panel))) {
+    stop("Point-year panel is missing baseline columns.", call. = FALSE)
+  }
+  if (!is.numeric(baseline_year) || length(baseline_year) != 1L ||
+        is.na(baseline_year) || baseline_year != as.integer(baseline_year)) {
+    stop("Baseline year must be one integer year.", call. = FALSE)
+  }
+  if (anyNA(columns) || anyDuplicated(columns)) {
+    stop("Baseline covariate names must be complete and unique.", call. = FALSE)
+  }
+  protected_columns <- c(
+    "point_id",
+    "observation_id",
+    "source_year",
+    "reference_date"
   )
-  opening_dates <- as.Date(stops$start_date)
-
-  first_exposure <- function(stop_indices) {
-    selected_stop <- rep(NA_integer_, nrow(point_locations))
-    selected_date <- rep(as.Date(NA), nrow(point_locations))
-    selected_distance <- rep(NA_real_, nrow(point_locations))
-
-    for (i in seq_len(nrow(point_locations))) {
-      candidates <- stop_indices[
-        distance_matrix[i, stop_indices] <= treatment_radius_m &
-          !is.na(opening_dates[stop_indices])
-      ]
-      if (length(candidates) == 0L) {
-        next
-      }
-      earliest <- min(opening_dates[candidates])
-      earliest_candidates <- candidates[
-        opening_dates[candidates] == earliest
-      ]
-      chosen <- earliest_candidates[
-        which.min(distance_matrix[i, earliest_candidates])
-      ]
-      selected_stop[[i]] <- chosen
-      selected_date[[i]] <- opening_dates[[chosen]]
-      selected_distance[[i]] <- distance_matrix[i, chosen]
-    }
-
-    data.frame(
-      stop_index = selected_stop,
-      opening_date = selected_date,
-      distance_m = selected_distance
+  if (any(columns %in% protected_columns)) {
+    stop(
+      "Identifier and time columns cannot be used as baseline covariates.",
+      call. = FALSE
+    )
+  }
+  unknown_columns <- setdiff(columns, names(point_year_panel))
+  if (length(unknown_columns) > 0L) {
+    stop("Baseline covariates are not present in the point-year panel.", call. = FALSE)
+  }
+  geometry_column <- attr(point_year_panel, "sf_column")
+  non_spatial_panel <- sf::st_drop_geometry(point_year_panel)
+  list_column <- vapply(
+    non_spatial_panel[setdiff(columns, geometry_column)],
+    is.list,
+    logical(1)
+  )
+  if (any(columns %in% geometry_column) || any(list_column)) {
+    stop(
+      "geometry or list columns cannot be used as baseline covariates.",
+      call. = FALSE
     )
   }
 
-  all_exposure <- first_exposure(seq_len(nrow(stops)))
-  phase1_indices <- which(stops$phase1_initial)
-  if (length(phase1_indices) == 0L) {
-    stop("No initial Phase I BRT stops are available.", call. = FALSE)
-  }
-  phase1_exposure <- first_exposure(phase1_indices)
-
-  point_locations$nearest_brt_distance_m <- apply(
-    distance_matrix,
-    1L,
-    min
-  )
-  point_locations$phase1_exposed <- !is.na(phase1_exposure$stop_index)
-  point_locations$phase1_stop_id <- stops$stop_id[
-    phase1_exposure$stop_index
-  ]
-  point_locations$phase1_distance_m <- phase1_exposure$distance_m
-  point_locations$phase1_opening_date <- phase1_exposure$opening_date
-  point_locations$phase1_treatment_year <- first_observed_treatment_year(
-    phase1_exposure$opening_date,
-    reference_month,
-    reference_day
-  )
-  point_locations$ever_brt_exposed <- !is.na(all_exposure$stop_index)
-  point_locations$first_brt_stop_id <- stops$stop_id[
-    all_exposure$stop_index
-  ]
-  point_locations$first_brt_phase <- stops$phase[
-    all_exposure$stop_index
-  ]
-  point_locations$first_brt_distance_m <- all_exposure$distance_m
-  point_locations$first_brt_opening_date <- all_exposure$opening_date
-  point_locations$first_brt_treatment_year <- first_observed_treatment_year(
-    all_exposure$opening_date,
-    reference_month,
-    reference_day
-  )
-  point_locations
-}
-
-balanced_land_price_panel <- function(
-  observations,
-  point_locations,
-  years,
-  unit_prefix
-) {
-  years <- sort(unique(as.integer(years)))
-  if (!identical(years, seq.int(min(years), max(years)))) {
-    stop("Panel years must be consecutive.", call. = FALSE)
-  }
-
-  point_year_counts <- sf::st_drop_geometry(observations) |>
-    dplyr::filter(.data$source_year %in% years) |>
-    dplyr::count(.data$point_id, .data$source_year, name = "n")
-  balanced_ids <- point_year_counts |>
-    dplyr::group_by(.data$point_id) |>
-    dplyr::summarise(
-      year_count = dplyr::n_distinct(.data$source_year),
-      one_observation_per_year = all(.data$n == 1L),
-      .groups = "drop"
-    ) |>
-    dplyr::filter(
-      .data$year_count == length(years),
-      .data$one_observation_per_year
-    ) |>
+  baseline_rows <- point_year_panel |>
+    sf::st_drop_geometry() |>
+    dplyr::filter(.data$source_year == as.integer(baseline_year))
+  duplicate_points <- baseline_rows |>
+    dplyr::count(.data$point_id, name = "n") |>
+    dplyr::filter(.data$n > 1L) |>
     dplyr::pull(.data$point_id)
-
-  point_attributes <- point_locations |>
-    sf::st_drop_geometry() |>
-    dplyr::filter(.data$point_id %in% balanced_ids)
-  panel <- observations |>
-    sf::st_drop_geometry() |>
-    dplyr::filter(
-      .data$point_id %in% balanced_ids,
-      .data$source_year %in% years
-    ) |>
-    dplyr::transmute(
-      point_id = .data$point_id,
-      year = as.integer(.data$source_year),
-      reference_date = as.Date(.data$reference_date),
-      price_yen_per_m2 = as.numeric(.data$price_yen_per_m2)
-    ) |>
-    dplyr::left_join(point_attributes, by = "point_id") |>
-    dplyr::mutate(
-      unit_id = sprintf(
-        "%s_%05d",
-        unit_prefix,
-        .data$point_id
+  if (length(duplicate_points) > 0L) {
+    stop(
+      sprintf(
+        "Baseline year has multiple observations for point IDs: %s",
+        paste(duplicate_points, collapse = ", ")
       ),
-      log_price = log(.data$price_yen_per_m2),
-      phase1_treated = as.integer(
-        .data$phase1_exposed &
-          .data$year >= .data$phase1_treatment_year
-      ),
-      staggered_treated = as.integer(
-        .data$ever_brt_exposed &
-          .data$year >= .data$first_brt_treatment_year
-      )
+      call. = FALSE
+    )
+  }
+
+  baseline_rows |>
+    dplyr::select(
+      "point_id",
+      baseline_source_year = "source_year",
+      dplyr::all_of(columns)
     ) |>
-    dplyr::arrange(.data$unit_id, .data$year)
-
-  if (nrow(panel) != length(balanced_ids) * length(years) ||
-        anyDuplicated(panel[c("unit_id", "year")])) {
-    stop("Could not construct a balanced land-price panel.", call. = FALSE)
-  }
-  if (any(!is.finite(panel$log_price))) {
-    stop("Panel contains a non-positive or missing land price.", call. = FALSE)
-  }
-  panel
-}
-
-prepare_augsynth_panels <- function(
-  land_prices,
-  stops,
-  phase1_years = 2000:2017,
-  staggered_years = 2000:2025,
-  point_match_tolerance_m = 10,
-  treatment_radius_m = 1500,
-  metric_crs = 6677,
-  unit_prefix = "land_price"
-) {
-  required_columns <- c(
-    "source_year",
-    "reference_date",
-    "price_yen_per_m2"
-  )
-  if (!all(required_columns %in% names(land_prices))) {
-    stop("Land-price observations are missing panel columns.", call. = FALSE)
-  }
-  reference_dates <- as.Date(land_prices$reference_date)
-  reference_months <- unique(as.integer(format(reference_dates, "%m")))
-  reference_days <- unique(as.integer(format(reference_dates, "%d")))
-  if (length(reference_months) != 1L || length(reference_days) != 1L) {
-    stop("Land-price reference month and day must be constant.", call. = FALSE)
-  }
-
-  clustered <- cluster_land_price_points(
-    land_prices,
-    tolerance_m = point_match_tolerance_m,
-    metric_crs = metric_crs
-  )
-  point_locations <- assign_brt_treatment(
-    clustered$points,
-    stops,
-    treatment_radius_m = treatment_radius_m,
-    reference_month = reference_months,
-    reference_day = reference_days,
-    metric_crs = metric_crs
-  )
-  phase1_panel <- balanced_land_price_panel(
-    clustered$observations,
-    point_locations,
-    years = phase1_years,
-    unit_prefix = unit_prefix
-  )
-  staggered_panel <- balanced_land_price_panel(
-    clustered$observations,
-    point_locations,
-    years = staggered_years,
-    unit_prefix = unit_prefix
-  )
-
-  phase1_units <- dplyr::distinct(
-    phase1_panel,
-    .data$unit_id,
-    .data$phase1_exposed
-  )
-  staggered_units <- dplyr::distinct(
-    staggered_panel,
-    .data$unit_id,
-    .data$first_brt_treatment_year
-  )
-  finite_cohorts <- staggered_units$first_brt_treatment_year[
-    !is.na(staggered_units$first_brt_treatment_year)
-  ]
-  quality <- data.frame(
-    point_match_tolerance_m = point_match_tolerance_m,
-    treatment_radius_m = treatment_radius_m,
-    clustered_point_count = nrow(point_locations),
-    duplicate_point_year_count = clustered$duplicate_point_year_count,
-    maximum_cluster_displacement_m = max(
-      point_locations$maximum_displacement_m
-    ),
-    phase1_start_year = min(phase1_years),
-    phase1_end_year = max(phase1_years),
-    phase1_unit_count = nrow(phase1_units),
-    phase1_treated_unit_count = sum(phase1_units$phase1_exposed),
-    staggered_start_year = min(staggered_years),
-    staggered_end_year = max(staggered_years),
-    staggered_unit_count = nrow(staggered_units),
-    staggered_treated_unit_count = length(finite_cohorts),
-    staggered_cohort_count = dplyr::n_distinct(finite_cohorts),
-    staggered_control_unit_count = sum(is.na(
-      staggered_units$first_brt_treatment_year
-    )),
-    stringsAsFactors = FALSE
-  )
-
-  list(
-    phase1 = phase1_panel,
-    staggered = staggered_panel,
-    points = point_locations,
-    quality = quality
-  )
+    dplyr::arrange(.data$point_id)
 }
