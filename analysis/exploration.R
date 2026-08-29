@@ -1,28 +1,28 @@
 source(here::here("R", "functions.R"))
 
-# The Phase I periods below follow decision 0007. The treatment radius and
+# The Phase I periods below follow decision 0007. The stop radius and
 # covariate specification remain exploratory rather than adopted settings.
 point_match_tolerance_m <- 10
-treatment_radius_m <- 1500
+stop_radius_m <- 1500
 metric_crs <- 6677
 phase1_primary_panel_years <- 2000:2015
-phase1_supplement_years <- 2000:2017
-phase1_start_year_sensitivity <- list(
+phase1_supplementary_panel_years <- 2000:2017
+phase1_sensitivity_panel_years_by_specification <- list(
   start_2005 = 2005:2015,
   start_2009 = 2009:2015
 )
-active_access_panel_years <- 2000:2025
+active_stop_proximity_panel_years <- 2000:2025
 baseline_year <- 2010L
 baseline_covariate_columns <- character()
 # Candidate core columns include area_m2, current_use_raw,
 # transport_distance_m, building_coverage_pct, and floor_area_ratio_pct.
 # Check their meaning, availability, and pre-treatment timing before use.
 
-stops <- sf::st_read(
+brt_stops <- sf::st_read(
   here::here("data", "processed", "brt_stops.gpkg"),
   quiet = TRUE
 )
-service_interruptions <- readr::read_csv(
+brt_stop_service_interruptions <- readr::read_csv(
   here::here("data", "manual", "brt_stop_service_interruptions.csv"),
   col_types = readr::cols(
     stop_id = readr::col_character(),
@@ -31,7 +31,7 @@ service_interruptions <- readr::read_csv(
     .default = readr::col_character()
   )
 )
-access_events <- tibble::tribble(
+brt_service_events <- tibble::tribble(
   ~event_id, ~event_date, ~service_period,
   "2013", as.Date("2013-03-25"), "phase1_2013",
   "2016", as.Date("2016-02-01"), "phase1_added_2016",
@@ -40,7 +40,7 @@ access_events <- tibble::tribble(
   "2021_pause", as.Date("2021-02-01"), "phase2_sunpia_paused_2021",
   "2022_resume", as.Date("2022-05-01"), "phase2_sunpia_resumed_2022"
 )
-land_price_publication <- sf::st_read(
+land_price_publication_observations <- sf::st_read(
   here::here(
     "data",
     "processed",
@@ -49,7 +49,7 @@ land_price_publication <- sf::st_read(
   layer = "observations",
   quiet = TRUE
 )
-prefectural_land_price_survey <- sf::st_read(
+prefectural_land_price_survey_observations <- sf::st_read(
   here::here(
     "data",
     "processed",
@@ -59,50 +59,50 @@ prefectural_land_price_survey <- sf::st_read(
   quiet = TRUE
 )
 
-land_price_sources <- list(
-  publication = land_price_publication,
-  survey = prefectural_land_price_survey
+land_price_observations_by_source <- list(
+  land_price_publication = land_price_publication_observations,
+  prefectural_land_price_survey = prefectural_land_price_survey_observations
 )
-land_price_analysis <- purrr::map(
-  land_price_sources,
+analysis_data_by_source <- purrr::map(
+  land_price_observations_by_source,
   prepare_land_price_analysis_data,
   point_match_tolerance_m = point_match_tolerance_m,
   metric_crs = metric_crs
 )
-point_stop_distances <- purrr::map(
-  land_price_analysis,
+point_stop_distances_by_source <- purrr::map(
+  analysis_data_by_source,
   function(analysis_data) {
     calculate_point_stop_distances(
       analysis_data$point_registry,
-      stops,
+      brt_stops,
       metric_crs = metric_crs
     )
   }
 )
 
-phase1_stop_ids <- stops |>
+phase1_stop_ids <- brt_stops |>
   sf::st_drop_geometry() |>
   dplyr::filter(.data$phase1_initial) |>
   dplyr::pull(.data$stop_id)
 
-phase1_exposure <- purrr::map(
-  point_stop_distances,
-  derive_brt_exposure,
-  stops = stops,
-  treatment_radius_m = treatment_radius_m,
+phase1_stop_assignments_by_source <- purrr::map(
+  point_stop_distances_by_source,
+  assign_brt_stop_radius,
+  stops = brt_stops,
+  stop_radius_m = stop_radius_m,
   eligible_stop_ids = phase1_stop_ids
 )
-treatment_panels <- purrr::map2(
-  land_price_analysis,
-  point_stop_distances,
+treatment_panels_by_source <- purrr::map2(
+  analysis_data_by_source,
+  point_stop_distances_by_source,
   function(analysis_data, distances) {
     derive_brt_treatment_panel(
       analysis_data$point_year_panel,
       distances,
-      stops,
-      treatment_radius_m = treatment_radius_m,
-      service_interruptions = service_interruptions,
-      access_events = access_events
+      brt_stops,
+      stop_radius_m = stop_radius_m,
+      service_interruptions = brt_stop_service_interruptions,
+      service_events = brt_service_events
     )
   }
 )
@@ -110,19 +110,19 @@ treatment_panels <- purrr::map2(
 # Build a complete panel directly for the requested years. In particular, the
 # Phase I samples are not conditioned on a point remaining observed through
 # 2025.
-build_complete_model_panels <- function(panel_years) {
+build_complete_model_panels_by_source <- function(panel_years) {
   purrr::map2(
-    treatment_panels,
-    phase1_exposure,
-    function(treatment_panel, exposure) {
+    treatment_panels_by_source,
+    phase1_stop_assignments_by_source,
+    function(treatment_panel, stop_assignment) {
       filter_complete_point_panel(
         treatment_panel,
         years = panel_years
       ) |>
         dplyr::left_join(
-          exposure |>
+          stop_assignment |>
             dplyr::rename(
-              phase1_exposed = "exposed",
+              phase1_within_stop_radius = "within_stop_radius",
               phase1_stop_id = "stop_id",
               phase1_opening_date = "opening_date",
               phase1_distance_m = "distance_m"
@@ -131,7 +131,7 @@ build_complete_model_panels <- function(panel_years) {
         ) |>
         dplyr::mutate(
           phase1_treated = as.integer(
-            .data$phase1_exposed &
+            .data$phase1_within_stop_radius &
               .data$reference_date >= .data$phase1_opening_date
           ),
           log_price = log(.data$price_yen_per_m2)
@@ -141,21 +141,22 @@ build_complete_model_panels <- function(panel_years) {
   )
 }
 
-phase1_model_panels <- build_complete_model_panels(
+phase1_model_panels_by_source <- build_complete_model_panels_by_source(
   phase1_primary_panel_years
 )
-phase1_supplement_panels <- build_complete_model_panels(
-  phase1_supplement_years
+phase1_supplementary_panels_by_source <- build_complete_model_panels_by_source(
+  phase1_supplementary_panel_years
 )
-phase1_sensitivity_panels <- purrr::map(
-  phase1_start_year_sensitivity,
-  build_complete_model_panels
+phase1_sensitivity_panels_by_specification <- purrr::map(
+  phase1_sensitivity_panel_years_by_specification,
+  build_complete_model_panels_by_source
 )
-active_access_model_panels <- build_complete_model_panels(
-  active_access_panel_years
-)
-baseline_covariates <- purrr::map(
-  land_price_analysis,
+active_stop_proximity_model_panels_by_source <-
+  build_complete_model_panels_by_source(
+    active_stop_proximity_panel_years
+  )
+baseline_covariates_by_source <- purrr::map(
+  analysis_data_by_source,
   function(analysis_data) {
     build_baseline_covariates(
       analysis_data$point_year_panel,
@@ -165,33 +166,39 @@ baseline_covariates <- purrr::map(
   }
 )
 
-active_access_model_panels <- purrr::imap(
-  active_access_model_panels,
+active_stop_proximity_model_panels_by_source <- purrr::imap(
+  active_stop_proximity_model_panels_by_source,
   function(panel, source_name) {
-    assert_brt_access_is_monotone(
+    assert_brt_proximity_monotone(
       panel,
       source_label = source_name
     ) |>
       dplyr::mutate(
-        brt_access_active = as.integer(.data$brt_access_active)
+        within_active_stop_radius = as.integer(
+          .data$within_active_stop_radius
+        )
       )
   }
 )
-active_access_diagnostics <- purrr::imap_dfr(
-  active_access_model_panels,
+active_stop_proximity_diagnostics <- purrr::imap_dfr(
+  active_stop_proximity_model_panels_by_source,
   function(panel, source_name) {
     panel |>
       dplyr::group_by(.data$point_id) |>
       dplyr::summarise(
-        access_reference_date = if (any(.data$brt_access_active == 1L)) {
-          min(.data$reference_date[.data$brt_access_active == 1L])
+        proximity_start_reference_date = if (
+          any(.data$within_active_stop_radius == 1L)
+        ) {
+          min(
+            .data$reference_date[.data$within_active_stop_radius == 1L]
+          )
         } else {
           as.Date(NA)
         },
         .groups = "drop"
       ) |>
       dplyr::count(
-        .data$access_reference_date,
+        .data$proximity_start_reference_date,
         name = "point_count",
         .drop = FALSE
       ) |>
@@ -199,9 +206,9 @@ active_access_diagnostics <- purrr::imap_dfr(
   }
 )
 
-summarise_phase1_samples <- function(panels, specification) {
+summarise_phase1_samples <- function(panels_by_source, specification) {
   purrr::imap_dfr(
-    panels,
+    panels_by_source,
     function(panel, source_name) {
       panel |>
         dplyr::group_by(.data$point_id) |>
@@ -227,31 +234,31 @@ summarise_phase1_samples <- function(panels, specification) {
 
 phase1_sample_diagnostics <- dplyr::bind_rows(
   summarise_phase1_samples(
-    phase1_model_panels,
+    phase1_model_panels_by_source,
     "primary_2000_2015"
   ),
   summarise_phase1_samples(
-    phase1_supplement_panels,
+    phase1_supplementary_panels_by_source,
     "supplementary_2000_2017"
   ),
   purrr::imap_dfr(
-    phase1_sensitivity_panels,
-    \(panels, specification) {
-      summarise_phase1_samples(panels, specification)
+    phase1_sensitivity_panels_by_specification,
+    \(panels_by_source, specification) {
+      summarise_phase1_samples(panels_by_source, specification)
     }
   )
 )
 
 phase1_sample_diagnostics
 
-fit_multisynth_panels <- function(panels, treatment_column) {
+fit_multisynth_panels <- function(panels_by_source, treatment_column) {
   model_formula <- stats::reformulate(
     treatment_column,
     response = "log_price"
   )
 
   purrr::map(
-    panels,
+    panels_by_source,
     function(panel) {
       augsynth::multisynth(
         model_formula,
@@ -265,76 +272,80 @@ fit_multisynth_panels <- function(panels, treatment_column) {
   )
 }
 
-summarise_multisynth_panels <- function(fits) {
+summarise_multisynth_panels <- function(fits_by_source) {
   purrr::map(
-    fits,
+    fits_by_source,
     summary,
     inf_type = "jackknife"
   )
 }
 
-phase1_fits <- fit_multisynth_panels(
-  phase1_model_panels,
+phase1_fits_by_source <- fit_multisynth_panels(
+  phase1_model_panels_by_source,
   "phase1_treated"
 )
-phase1_summaries <- summarise_multisynth_panels(phase1_fits)
-phase1_summaries
+phase1_summaries_by_source <- summarise_multisynth_panels(
+  phase1_fits_by_source
+)
+phase1_summaries_by_source
 purrr::walk(
-  phase1_summaries,
+  phase1_summaries_by_source,
   \(x) print(plot(x))
 )
 
-phase1_supplement_fits <- fit_multisynth_panels(
-  phase1_supplement_panels,
+phase1_supplementary_fits_by_source <- fit_multisynth_panels(
+  phase1_supplementary_panels_by_source,
   "phase1_treated"
 )
-phase1_supplement_summaries <- summarise_multisynth_panels(
-  phase1_supplement_fits
+phase1_supplementary_summaries_by_source <- summarise_multisynth_panels(
+  phase1_supplementary_fits_by_source
 )
-phase1_supplement_summaries
+phase1_supplementary_summaries_by_source
 purrr::walk(
-  phase1_supplement_summaries,
+  phase1_supplementary_summaries_by_source,
   \(x) print(plot(x))
 )
 
-phase1_sensitivity_fits <- purrr::map(
-  phase1_sensitivity_panels,
+phase1_sensitivity_fits_by_specification <- purrr::map(
+  phase1_sensitivity_panels_by_specification,
   fit_multisynth_panels,
   treatment_column = "phase1_treated"
 )
-phase1_sensitivity_summaries <- purrr::map(
-  phase1_sensitivity_fits,
+phase1_sensitivity_summaries_by_specification <- purrr::map(
+  phase1_sensitivity_fits_by_specification,
   summarise_multisynth_panels
 )
-phase1_sensitivity_summaries
+phase1_sensitivity_summaries_by_specification
 purrr::walk(
-  phase1_sensitivity_summaries,
-  \(summaries) purrr::walk(summaries, \(x) print(plot(x)))
+  phase1_sensitivity_summaries_by_specification,
+  \(summaries_by_source) {
+    purrr::walk(summaries_by_source, \(x) print(plot(x)))
+  }
 )
 
-active_access_diagnostics
+active_stop_proximity_diagnostics
 
-active_access_fits <- fit_multisynth_panels(
-  active_access_model_panels,
-  "brt_access_active"
+active_stop_proximity_fits_by_source <- fit_multisynth_panels(
+  active_stop_proximity_model_panels_by_source,
+  "within_active_stop_radius"
 )
 
-active_access_summaries <- summarise_multisynth_panels(
-  active_access_fits
+active_stop_proximity_summaries_by_source <- summarise_multisynth_panels(
+  active_stop_proximity_fits_by_source
 )
-active_access_summaries
+active_stop_proximity_summaries_by_source
 purrr::walk(
-  active_access_summaries,
+  active_stop_proximity_summaries_by_source,
   \(x) print(plot(x))
 )
 
-# a <- active_access_model_panels$survey |>
-#   dplyr::filter(brt_access_active == 1) |>
+# a <- active_stop_proximity_model_panels_by_source$prefectural_land_price_survey |>
+#   dplyr::filter(within_active_stop_radius == 1) |>
 #   dplyr::group_by(point_id) |>
 #   dplyr::slice_min(source_year, n = 1, with_ties = FALSE) |>
 #   dplyr::ungroup()
 # 
-# active_access_summaries$survey$att |> 
+# active_stop_proximity_summaries_by_source$prefectural_land_price_survey$att |>
 #   dplyr::filter(Time == 6 & Level != "Average") |> 
 #   dplyr::left_join(
 #     a,
@@ -374,9 +385,9 @@ extract_multisynth_average_att <- function(summary_object) {
     )
 }
 
-summarise_average_atts <- function(summaries, specification) {
+summarise_average_atts <- function(summaries_by_source, specification) {
   purrr::imap_dfr(
-    summaries,
+    summaries_by_source,
     function(summary_object, source_name) {
       extract_multisynth_average_att(summary_object) |>
         dplyr::mutate(
@@ -390,17 +401,17 @@ summarise_average_atts <- function(summaries, specification) {
 
 phase1_average_att_comparison <- dplyr::bind_rows(
   summarise_average_atts(
-    phase1_summaries,
+    phase1_summaries_by_source,
     "primary_2000_2015"
   ),
   summarise_average_atts(
-    phase1_supplement_summaries,
+    phase1_supplementary_summaries_by_source,
     "supplementary_2000_2017"
   ),
   purrr::imap_dfr(
-    phase1_sensitivity_summaries,
-    \(summaries, specification) {
-      summarise_average_atts(summaries, specification)
+    phase1_sensitivity_summaries_by_specification,
+    \(summaries_by_source, specification) {
+      summarise_average_atts(summaries_by_source, specification)
     }
   )
 )
@@ -521,12 +532,12 @@ run_multisynth_loo <- function(
 # -------------------------------------------------------------------------
 
 phase1_loo_results <- purrr::imap_dfr(
-  phase1_model_panels,
+  phase1_model_panels_by_source,
   function(panel, source_name) {
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = phase1_summaries[[source_name]],
+      reference_summary = phase1_summaries_by_source[[source_name]],
       treatment_column = "phase1_treated"
     )
   }
@@ -539,38 +550,42 @@ phase1_loo_results
 # 2. Supplementary Phase 1 specification (through 2017)
 # -------------------------------------------------------------------------
 
-phase1_supplement_loo <- purrr::imap_dfr(
-  phase1_supplement_panels,
+phase1_supplementary_loo_results <- purrr::imap_dfr(
+  phase1_supplementary_panels_by_source,
   function(panel, source_name) {
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = phase1_supplement_summaries[[source_name]],
+      reference_summary = phase1_supplementary_summaries_by_source[[
+        source_name
+      ]],
       treatment_column = "phase1_treated"
     )
   }
 )
 
-phase1_supplement_loo
+phase1_supplementary_loo_results
 
 
 # -------------------------------------------------------------------------
-# 3. All active-access events
+# 3. All active-stop-proximity events
 # -------------------------------------------------------------------------
 
-active_access_loo_results <- purrr::imap_dfr(
-  active_access_model_panels,
+active_stop_proximity_loo_results <- purrr::imap_dfr(
+  active_stop_proximity_model_panels_by_source,
   function(panel, source_name) {
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = active_access_summaries[[source_name]],
-      treatment_column = "brt_access_active"
+      reference_summary = active_stop_proximity_summaries_by_source[[
+        source_name
+      ]],
+      treatment_column = "within_active_stop_radius"
     )
   }
 )
 
-active_access_loo_results
+active_stop_proximity_loo_results
 
 
 # -------------------------------------------------------------------------
@@ -583,14 +598,14 @@ loo_results <- dplyr::bind_rows(
       specification = "phase1_primary_2000_2015",
       .before = 1L
     ),
-  phase1_supplement_loo |>
+  phase1_supplementary_loo_results |>
     dplyr::mutate(
       specification = "phase1_supplementary_2000_2017",
       .before = 1L
     ),
-  active_access_loo_results |>
+  active_stop_proximity_loo_results |>
     dplyr::mutate(
-      specification = "active_access",
+      specification = "active_stop_proximity",
       .before = 1L
     )
 )

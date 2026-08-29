@@ -2186,21 +2186,21 @@ filter_complete_point_panel <- function(point_year_panel, years) {
     dplyr::arrange(.data$point_id, .data$source_year)
 }
 
-derive_brt_exposure <- function(
+assign_brt_stop_radius <- function(
   point_stop_distances,
   stops,
-  treatment_radius_m,
+  stop_radius_m,
   eligible_stop_ids = stops$stop_id
 ) {
   distance_columns <- c("point_id", "stop_id", "distance_m")
   stop_columns <- c("stop_id", "start_date")
   if (!all(distance_columns %in% names(point_stop_distances)) ||
         !all(stop_columns %in% names(stops))) {
-    stop("BRT distance or stop data are missing exposure columns.", call. = FALSE)
+    stop("BRT distance or stop data are missing assignment columns.", call. = FALSE)
   }
-  if (!is.numeric(treatment_radius_m) || length(treatment_radius_m) != 1L ||
-        is.na(treatment_radius_m) || treatment_radius_m <= 0) {
-    stop("Treatment radius must be positive.", call. = FALSE)
+  if (!is.numeric(stop_radius_m) || length(stop_radius_m) != 1L ||
+        is.na(stop_radius_m) || stop_radius_m <= 0) {
+    stop("Stop radius must be positive.", call. = FALSE)
   }
   if (length(eligible_stop_ids) == 0L || anyNA(eligible_stop_ids)) {
     stop("Eligible BRT stop IDs must be non-empty and complete.", call. = FALSE)
@@ -2223,7 +2223,7 @@ derive_brt_exposure <- function(
     dplyr::filter(
       .data$stop_id %in% eligible_stop_ids,
       !is.na(.data$distance_m),
-      .data$distance_m <= treatment_radius_m
+      .data$distance_m <= stop_radius_m
     ) |>
     dplyr::left_join(stop_openings, by = "stop_id") |>
     dplyr::filter(!is.na(.data$opening_date)) |>
@@ -2242,21 +2242,24 @@ derive_brt_exposure <- function(
     dplyr::distinct(.data$point_id) |>
     dplyr::arrange(.data$point_id) |>
     dplyr::left_join(selected, by = "point_id") |>
-    dplyr::mutate(exposed = !is.na(.data$stop_id), .after = "point_id") |>
+    dplyr::mutate(
+      within_stop_radius = !is.na(.data$stop_id),
+      .after = "point_id"
+    ) |>
     dplyr::select(
       "point_id",
-      "exposed",
+      "within_stop_radius",
       "stop_id",
       "opening_date",
       "distance_m"
     )
 }
 
-derive_brt_active_state_panel <- function(
+derive_brt_proximity_panel <- function(
   point_year_panel,
   point_stop_distances,
   stops,
-  treatment_radius_m,
+  stop_radius_m,
   service_interruptions = NULL
 ) {
   panel_columns <- c("point_id", "reference_date")
@@ -2271,11 +2274,11 @@ derive_brt_active_state_panel <- function(
   if (!all(panel_columns %in% names(point_year_panel)) ||
         !all(distance_columns %in% names(point_stop_distances)) ||
         !all(stop_columns %in% names(stops))) {
-    stop("BRT treatment inputs are missing required columns.", call. = FALSE)
+    stop("BRT stop proximity inputs are missing required columns.", call. = FALSE)
   }
-  if (!is.numeric(treatment_radius_m) || length(treatment_radius_m) != 1L ||
-        is.na(treatment_radius_m) || treatment_radius_m <= 0) {
-    stop("Treatment radius must be positive.", call. = FALSE)
+  if (!is.numeric(stop_radius_m) || length(stop_radius_m) != 1L ||
+        is.na(stop_radius_m) || stop_radius_m <= 0) {
+    stop("Stop radius must be positive.", call. = FALSE)
   }
   if (anyNA(stops$stop_id) || anyDuplicated(stops$stop_id)) {
     stop("BRT stop IDs must be complete and unique.", call. = FALSE)
@@ -2378,19 +2381,21 @@ derive_brt_active_state_panel <- function(
     ) |>
     dplyr::group_by(.data$point_id, .data$reference_date) |>
     dplyr::summarise(
-      active_stop_count = sum(.data$distance_m <= treatment_radius_m),
+      active_stop_count_within_radius = sum(
+        .data$distance_m <= stop_radius_m
+      ),
       nearest_active_stop_id = dplyr::first(.data$stop_id),
       nearest_active_stop_distance_m = dplyr::first(.data$distance_m),
       nearest_active_stop_confidence = dplyr::first(.data$confidence),
       nearest_active_stop_historical_validation_status = dplyr::first(
         .data$historical_validation_status
       ),
-      active_access_has_non_high_confidence = any(
-        .data$distance_m <= treatment_radius_m &
+      stop_proximity_has_non_high_confidence = any(
+        .data$distance_m <= stop_radius_m &
           (is.na(.data$confidence) | .data$confidence != "high")
       ),
-      active_access_uses_unvalidated_historical_location = any(
-        .data$distance_m <= treatment_radius_m &
+      stop_proximity_uses_unvalidated_historical_location = any(
+        .data$distance_m <= stop_radius_m &
           (is.na(.data$historical_validation_status) |
              .data$historical_validation_status != "user_verified")
       ),
@@ -2400,74 +2405,77 @@ derive_brt_active_state_panel <- function(
   treatment_panel <- point_year_panel |>
     dplyr::left_join(active_summary, by = c("point_id", "reference_date")) |>
     dplyr::mutate(
-      active_stop_count = dplyr::coalesce(.data$active_stop_count, 0L),
-      active_access_has_non_high_confidence = dplyr::coalesce(
-        .data$active_access_has_non_high_confidence,
+      active_stop_count_within_radius = dplyr::coalesce(
+        .data$active_stop_count_within_radius,
+        0L
+      ),
+      stop_proximity_has_non_high_confidence = dplyr::coalesce(
+        .data$stop_proximity_has_non_high_confidence,
         FALSE
       ),
-      active_access_uses_unvalidated_historical_location = dplyr::coalesce(
-        .data$active_access_uses_unvalidated_historical_location,
+      stop_proximity_uses_unvalidated_historical_location = dplyr::coalesce(
+        .data$stop_proximity_uses_unvalidated_historical_location,
         FALSE
       ),
-      brt_access_active = .data$active_stop_count > 0L,
+      within_active_stop_radius = .data$active_stop_count_within_radius > 0L,
       .after = "reference_date"
     )
 
   treatment_panel
 }
 
-append_brt_event_columns <- function(
+append_brt_proximity_events <- function(
   treatment_panel,
   point_stop_distances,
   stops,
-  treatment_radius_m,
+  stop_radius_m,
   service_interruptions,
-  access_events
+  service_events
 ) {
   event_columns <- c("event_id", "event_date", "service_period")
-  if (!all(event_columns %in% names(access_events))) {
-    stop("BRT access events are missing required columns.", call. = FALSE)
+  if (!all(event_columns %in% names(service_events))) {
+    stop("BRT service events are missing required columns.", call. = FALSE)
   }
-  access_events <- access_events |>
+  service_events <- service_events |>
     dplyr::transmute(
       event_id = as.character(.data$event_id),
       event_date = as.Date(.data$event_date),
       service_period = as.character(.data$service_period)
     ) |>
     dplyr::arrange(.data$event_date)
-  if (nrow(access_events) == 0L || anyNA(access_events) ||
-        anyDuplicated(access_events$event_id) ||
-        anyDuplicated(access_events$event_date) ||
-        any(!grepl("^[A-Za-z0-9_]+$", access_events$event_id))) {
-    stop("BRT access events must be complete, unique, and safely named.", call. = FALSE)
+  if (nrow(service_events) == 0L || anyNA(service_events) ||
+        anyDuplicated(service_events$event_id) ||
+        anyDuplicated(service_events$event_date) ||
+        any(!grepl("^[A-Za-z0-9_]+$", service_events$event_id))) {
+    stop("BRT service events must be complete, unique, and safely named.", call. = FALSE)
   }
 
   period_index <- findInterval(
     as.numeric(as.Date(treatment_panel$reference_date)),
-    as.numeric(access_events$event_date)
+    as.numeric(service_events$event_date)
   )
   treatment_panel$service_period <- c(
     "pre_brt",
-    access_events$service_period
+    service_events$service_period
   )[period_index + 1L]
 
   event_panel <- tidyr::expand_grid(
     point_id = unique(treatment_panel$point_id),
-    event_id = access_events$event_id,
+    event_id = service_events$event_id,
     event_state = c("before", "after")
   ) |>
     dplyr::left_join(
-      dplyr::select(access_events, "event_id", "event_date"),
+      dplyr::select(service_events, "event_id", "event_date"),
       by = "event_id"
     ) |>
     dplyr::mutate(
       reference_date = .data$event_date - as.integer(.data$event_state == "before")
     )
-  event_states <- derive_brt_active_state_panel(
+  event_states <- derive_brt_proximity_panel(
     event_panel,
     point_stop_distances,
     stops,
-    treatment_radius_m = treatment_radius_m,
+    stop_radius_m = stop_radius_m,
     service_interruptions = service_interruptions
   ) |>
     sf::st_drop_geometry() |>
@@ -2475,30 +2483,38 @@ append_brt_event_columns <- function(
       "point_id",
       "event_id",
       "event_state",
-      "brt_access_active"
+      "within_active_stop_radius"
     ) |>
     tidyr::pivot_wider(
       names_from = "event_state",
-      values_from = "brt_access_active"
+      values_from = "within_active_stop_radius"
     ) |>
     dplyr::mutate(
-      access_gain = !.data$before & .data$after,
-      access_loss = .data$before & !.data$after
+      active_stop_proximity_gain = !.data$before & .data$after,
+      active_stop_proximity_loss = .data$before & !.data$after
     )
 
-  for (event_row in seq_len(nrow(access_events))) {
-    event_id <- access_events$event_id[[event_row]]
-    event_date <- access_events$event_date[[event_row]]
-    gain_column <- paste0("access_gain_", event_id)
-    loss_column <- paste0("access_loss_", event_id)
+  for (event_row in seq_len(nrow(service_events))) {
+    event_id <- service_events$event_id[[event_row]]
+    event_date <- service_events$event_date[[event_row]]
+    gain_column <- paste0("active_stop_proximity_gain_", event_id)
+    loss_column <- paste0("active_stop_proximity_loss_", event_id)
     post_column <- paste0("post_", event_id)
     gain_treated_column <- paste0(gain_column, "_treated")
     loss_treated_column <- paste0(loss_column, "_treated")
     event_assignment <- event_states |>
       dplyr::filter(.data$event_id == .env$event_id) |>
-      dplyr::select("point_id", "access_gain", "access_loss")
-    names(event_assignment)[names(event_assignment) == "access_gain"] <- gain_column
-    names(event_assignment)[names(event_assignment) == "access_loss"] <- loss_column
+      dplyr::select(
+        "point_id",
+        "active_stop_proximity_gain",
+        "active_stop_proximity_loss"
+      )
+    names(event_assignment)[
+      names(event_assignment) == "active_stop_proximity_gain"
+    ] <- gain_column
+    names(event_assignment)[
+      names(event_assignment) == "active_stop_proximity_loss"
+    ] <- loss_column
     treatment_panel <- treatment_panel |>
       dplyr::left_join(
         event_assignment,
@@ -2520,69 +2536,69 @@ derive_brt_treatment_panel <- function(
   point_year_panel,
   point_stop_distances,
   stops,
-  treatment_radius_m,
+  stop_radius_m,
   service_interruptions = NULL,
-  access_events = NULL
+  service_events = NULL
 ) {
-  treatment_panel <- derive_brt_active_state_panel(
+  treatment_panel <- derive_brt_proximity_panel(
     point_year_panel,
     point_stop_distances,
     stops,
-    treatment_radius_m = treatment_radius_m,
+    stop_radius_m = stop_radius_m,
     service_interruptions = service_interruptions
   )
-  if (is.null(access_events)) {
+  if (is.null(service_events)) {
     return(treatment_panel)
   }
 
-  append_brt_event_columns(
+  append_brt_proximity_events(
     treatment_panel,
     point_stop_distances,
     stops,
-    treatment_radius_m = treatment_radius_m,
+    stop_radius_m = stop_radius_m,
     service_interruptions = service_interruptions,
-    access_events = access_events
+    service_events = service_events
   )
 }
 
-assert_brt_access_is_monotone <- function(
+assert_brt_proximity_monotone <- function(
   treatment_panel,
-  access_column = "brt_access_active",
+  proximity_column = "within_active_stop_radius",
   point_column = "point_id",
   date_column = "reference_date",
   source_label = NULL
 ) {
-  required_columns <- c(access_column, point_column, date_column)
+  required_columns <- c(proximity_column, point_column, date_column)
   if (!all(required_columns %in% names(treatment_panel))) {
-    stop("BRT monotonicity input is missing required columns.", call. = FALSE)
+    stop("BRT stop proximity input is missing required columns.", call. = FALSE)
   }
   diagnostic <- treatment_panel |>
     sf::st_drop_geometry() |>
     dplyr::transmute(
       point_id = as.character(.data[[point_column]]),
       reference_date = as.Date(.data[[date_column]]),
-      access_value = .data[[access_column]]
+      proximity_value = .data[[proximity_column]]
     )
   if (anyNA(diagnostic) ||
-        any(!diagnostic$access_value %in% c(FALSE, TRUE, 0L, 1L)) ||
+        any(!diagnostic$proximity_value %in% c(FALSE, TRUE, 0L, 1L)) ||
         anyDuplicated(diagnostic[c("point_id", "reference_date")])) {
     stop(
-      "BRT monotonicity input must have one complete binary value per point-date.",
+      "BRT stop proximity input must have one complete binary value per point-date.",
       call. = FALSE
     )
   }
   reversals <- diagnostic |>
-    dplyr::mutate(access_value = as.logical(.data$access_value)) |>
+    dplyr::mutate(proximity_value = as.logical(.data$proximity_value)) |>
     dplyr::arrange(.data$point_id, .data$reference_date) |>
     dplyr::group_by(.data$point_id) |>
     dplyr::mutate(
-      previous_access = dplyr::lag(
-        .data$access_value,
-        default = dplyr::first(.data$access_value)
+      previous_proximity = dplyr::lag(
+        .data$proximity_value,
+        default = dplyr::first(.data$proximity_value)
       )
     ) |>
     dplyr::ungroup() |>
-    dplyr::filter(.data$previous_access & !.data$access_value)
+    dplyr::filter(.data$previous_proximity & !.data$proximity_value)
   if (nrow(reversals) > 0L) {
     source_text <- if (is.null(source_label)) {
       ""
@@ -2597,7 +2613,7 @@ assert_brt_access_is_monotone <- function(
       collapse = "; "
     )
     stop(
-      "BRT access monotonicity failed",
+      "Active BRT stop proximity monotonicity failed",
       source_text,
       ": ",
       nrow(reversals),

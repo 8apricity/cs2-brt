@@ -145,7 +145,7 @@ testthat::test_that("complete point panels require one observation per requested
   testthat::expect_equal(sort(unique(complete$source_year)), c(2010L, 2012L))
 })
 
-testthat::test_that("BRT exposure chooses earliest opening then nearest stop", {
+testthat::test_that("BRT stop assignment uses opening date then distance", {
   point_stop_distances <- tidyr::expand_grid(
     point_id = c("point_1", "point_2", "point_3"),
     stop_id = c("early", "early_near", "late_near")
@@ -162,27 +162,36 @@ testthat::test_that("BRT exposure chooses earliest opening then nearest stop", {
     start_date = as.Date(c("2013-03-25", "2013-03-25", "2015-03-25"))
   )
 
-  exposure <- derive_brt_exposure(
+  assignment <- assign_brt_stop_radius(
     point_stop_distances,
     stops,
-    treatment_radius_m = 150,
+    stop_radius_m = 150,
     eligible_stop_ids = stops$stop_id
   )
 
   testthat::expect_equal(
-    names(exposure),
-    c("point_id", "exposed", "stop_id", "opening_date", "distance_m")
+    names(assignment),
+    c(
+      "point_id",
+      "within_stop_radius",
+      "stop_id",
+      "opening_date",
+      "distance_m"
+    )
   )
-  testthat::expect_equal(exposure$exposed, c(TRUE, TRUE, FALSE))
   testthat::expect_equal(
-    exposure$stop_id,
+    assignment$within_stop_radius,
+    c(TRUE, TRUE, FALSE)
+  )
+  testthat::expect_equal(
+    assignment$stop_id,
     c("early", "early_near", NA_character_)
   )
   testthat::expect_equal(
-    exposure$opening_date,
+    assignment$opening_date,
     as.Date(c("2013-03-25", "2013-03-25", NA))
   )
-  testthat::expect_equal(exposure$distance_m, c(100, 80, NA_real_))
+  testthat::expect_equal(assignment$distance_m, c(100, 80, NA_real_))
 })
 
 testthat::test_that("BRT treatment panel follows active service periods", {
@@ -218,17 +227,17 @@ testthat::test_that("BRT treatment panel follows active service periods", {
     point_year_panel,
     point_stop_distances,
     stops,
-    treatment_radius_m = 250,
+    stop_radius_m = 250,
     service_interruptions = interruptions
   ) |>
     dplyr::arrange(.data$point_id, .data$reference_date)
 
   testthat::expect_equal(
-    treatment_panel$brt_access_active,
+    treatment_panel$within_active_stop_radius,
     c(FALSE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
   )
   testthat::expect_equal(
-    treatment_panel$active_stop_count,
+    treatment_panel$active_stop_count_within_radius,
     c(0L, 1L, 0L, 1L, 0L, 0L, 0L, 0L)
   )
   testthat::expect_equal(
@@ -244,11 +253,11 @@ testthat::test_that("BRT treatment panel follows active service periods", {
     c(NA, "high", NA, "medium", NA, "high", NA, "medium")
   )
   testthat::expect_equal(
-    treatment_panel$active_access_has_non_high_confidence,
+    treatment_panel$stop_proximity_has_non_high_confidence,
     c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
   )
   testthat::expect_equal(
-    treatment_panel$active_access_uses_unvalidated_historical_location,
+    treatment_panel$stop_proximity_uses_unvalidated_historical_location,
     c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
   )
 })
@@ -281,7 +290,7 @@ testthat::test_that("BRT treatment panel separates event geography and timing", 
     inactive_start_date = as.Date("2019-06-01"),
     inactive_end_date = as.Date("2019-08-31")
   )
-  events <- data.frame(
+  service_events <- data.frame(
     event_id = c("2013", "2018", "2019_pause", "2019_resume"),
     event_date = as.Date(c(
       "2013-03-25",
@@ -301,9 +310,9 @@ testthat::test_that("BRT treatment panel separates event geography and timing", 
     point_year_panel,
     point_stop_distances,
     stops,
-    treatment_radius_m = 250,
+    stop_radius_m = 250,
     service_interruptions = interruptions,
-    access_events = events
+    service_events = service_events
   ) |>
     dplyr::arrange(.data$point_id, .data$reference_date)
 
@@ -317,7 +326,7 @@ testthat::test_that("BRT treatment panel separates event geography and timing", 
     ), 2L)
   )
   testthat::expect_equal(
-    treatment_panel$access_gain_2013,
+    treatment_panel$active_stop_proximity_gain_2013,
     c(rep(TRUE, 4L), rep(FALSE, 4L))
   )
   testthat::expect_equal(
@@ -325,35 +334,35 @@ testthat::test_that("BRT treatment panel separates event geography and timing", 
     rep(c(FALSE, TRUE, TRUE, TRUE), 2L)
   )
   testthat::expect_equal(
-    treatment_panel$access_gain_2013_treated,
+    treatment_panel$active_stop_proximity_gain_2013_treated,
     c(FALSE, TRUE, TRUE, TRUE, rep(FALSE, 4L))
   )
   testthat::expect_equal(
-    treatment_panel$access_loss_2019_pause,
+    treatment_panel$active_stop_proximity_loss_2019_pause,
     c(rep(TRUE, 4L), rep(FALSE, 4L))
   )
   testthat::expect_equal(
-    treatment_panel$access_loss_2019_pause_treated,
+    treatment_panel$active_stop_proximity_loss_2019_pause_treated,
     c(FALSE, FALSE, TRUE, TRUE, rep(FALSE, 4L))
   )
   testthat::expect_equal(
-    treatment_panel$access_gain_2019_resume_treated,
+    treatment_panel$active_stop_proximity_gain_2019_resume_treated,
     c(FALSE, FALSE, FALSE, TRUE, rep(FALSE, 4L))
   )
 })
 
-testthat::test_that("BRT access monotonicity reports treatment reversals", {
+testthat::test_that("BRT stop proximity reports treatment reversals", {
   panel_with_reversal <- data.frame(
     point_id = rep(c("point_1", "point_2"), each = 3L),
     reference_date = rep(
       as.Date(c("2018-01-01", "2019-01-01", "2020-01-01")),
       2L
     ),
-    brt_access_active = c(FALSE, TRUE, FALSE, FALSE, TRUE, TRUE)
+    within_active_stop_radius = c(FALSE, TRUE, FALSE, FALSE, TRUE, TRUE)
   )
 
   testthat::expect_error(
-    assert_brt_access_is_monotone(
+    assert_brt_proximity_monotone(
       panel_with_reversal,
       source_label = "publication"
     ),
@@ -365,7 +374,7 @@ testthat::test_that("BRT access monotonicity reports treatment reversals", {
     .data$point_id == "point_2"
   )
   testthat::expect_identical(
-    assert_brt_access_is_monotone(monotone_panel),
+    assert_brt_proximity_monotone(monotone_panel),
     monotone_panel
   )
 })
