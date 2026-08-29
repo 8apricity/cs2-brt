@@ -2186,7 +2186,7 @@ filter_complete_point_panel <- function(point_year_panel, years) {
     dplyr::arrange(.data$point_id, .data$source_year)
 }
 
-assign_brt_stop_radius <- function(
+assign_brt_stop_within_radius <- function(
   point_stop_distances,
   stops,
   stop_radius_m,
@@ -2301,7 +2301,7 @@ derive_brt_proximity_panel <- function(
     )
   if (anyNA(panel_keys$point_id) || anyNA(panel_keys$reference_date) ||
         anyNA(stop_periods$start_date)) {
-    stop("BRT treatment IDs and dates must be complete.", call. = FALSE)
+    stop("BRT stop proximity IDs and dates must be complete.", call. = FALSE)
   }
 
   if (is.null(service_interruptions)) {
@@ -2390,11 +2390,11 @@ derive_brt_proximity_panel <- function(
       nearest_active_stop_historical_validation_status = dplyr::first(
         .data$historical_validation_status
       ),
-      stop_proximity_has_non_high_confidence = any(
+      active_stop_proximity_has_non_high_confidence = any(
         .data$distance_m <= stop_radius_m &
           (is.na(.data$confidence) | .data$confidence != "high")
       ),
-      stop_proximity_uses_unvalidated_historical_location = any(
+      active_stop_proximity_uses_unvalidated_historical_location = any(
         .data$distance_m <= stop_radius_m &
           (is.na(.data$historical_validation_status) |
              .data$historical_validation_status != "user_verified")
@@ -2409,14 +2409,15 @@ derive_brt_proximity_panel <- function(
         .data$active_stop_count_within_radius,
         0L
       ),
-      stop_proximity_has_non_high_confidence = dplyr::coalesce(
-        .data$stop_proximity_has_non_high_confidence,
+      active_stop_proximity_has_non_high_confidence = dplyr::coalesce(
+        .data$active_stop_proximity_has_non_high_confidence,
         FALSE
       ),
-      stop_proximity_uses_unvalidated_historical_location = dplyr::coalesce(
-        .data$stop_proximity_uses_unvalidated_historical_location,
-        FALSE
-      ),
+      active_stop_proximity_uses_unvalidated_historical_location =
+        dplyr::coalesce(
+          .data$active_stop_proximity_uses_unvalidated_historical_location,
+          FALSE
+        ),
       within_active_stop_radius = .data$active_stop_count_within_radius > 0L,
       .after = "reference_date"
     )

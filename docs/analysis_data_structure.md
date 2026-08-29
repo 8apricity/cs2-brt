@@ -59,7 +59,7 @@ IDが変わることは許容する。
 `calculate_point_stop_distances()`は`point_registry`とBRT停留所から、全地点×全停留所の
 `point_id`、`stop_id`、`distance_m`を返す。距離閾値による行の除外は行わない。
 
-`assign_brt_stop_radius()`は、対象停留所IDと距離閾値を明示的に受け取り、
+`assign_brt_stop_within_radius()`は、対象停留所IDと距離閾値を明示的に受け取り、
 閾値内で最も早く
 開業した停留所を選ぶ。同じ開業日の候補が複数ある場合は最短距離を優先する。返り値は
 地点別の半径内判定`within_stop_radius`、停留所ID、開業日、距離であり、年次処置列は

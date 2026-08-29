@@ -40,7 +40,7 @@ brt_service_events <- tibble::tribble(
   "2021_pause", as.Date("2021-02-01"), "phase2_sunpia_paused_2021",
   "2022_resume", as.Date("2022-05-01"), "phase2_sunpia_resumed_2022"
 )
-land_price_publication_observations <- sf::st_read(
+land_price_publication <- sf::st_read(
   here::here(
     "data",
     "processed",
@@ -49,7 +49,7 @@ land_price_publication_observations <- sf::st_read(
   layer = "observations",
   quiet = TRUE
 )
-prefectural_land_price_survey_observations <- sf::st_read(
+prefectural_land_price_survey <- sf::st_read(
   here::here(
     "data",
     "processed",
@@ -60,8 +60,8 @@ prefectural_land_price_survey_observations <- sf::st_read(
 )
 
 land_price_observations_by_source <- list(
-  land_price_publication = land_price_publication_observations,
-  prefectural_land_price_survey = prefectural_land_price_survey_observations
+  land_price_publication = land_price_publication,
+  prefectural_land_price_survey = prefectural_land_price_survey
 )
 analysis_data_by_source <- purrr::map(
   land_price_observations_by_source,
@@ -87,7 +87,7 @@ phase1_stop_ids <- brt_stops |>
 
 phase1_stop_assignments_by_source <- purrr::map(
   point_stop_distances_by_source,
-  assign_brt_stop_radius,
+  assign_brt_stop_within_radius,
   stops = brt_stops,
   stop_radius_m = stop_radius_m,
   eligible_stop_ids = phase1_stop_ids

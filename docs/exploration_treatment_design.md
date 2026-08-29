@@ -50,8 +50,8 @@ BRT停留所との近接状態を確認するための**探索実装**を記録�
 | `nearest_active_stop_distance_m` | 同停留所までの距離。稼働停留所がなければ欠損 |
 | `nearest_active_stop_confidence` | 同停留所履歴の時間情報の確度 |
 | `nearest_active_stop_historical_validation_status` | 同停留所の歴史的位置検証状態 |
-| `stop_proximity_has_non_high_confidence` | 半径内の稼働停留所に`high`以外の履歴を含む |
-| `stop_proximity_uses_unvalidated_historical_location` | 半径内の稼働停留所に歴史的位置をユーザー検証済みでない停留所を含む |
+| `active_stop_proximity_has_non_high_confidence` | 半径内の稼働停留所に`high`以外の履歴を含む |
+| `active_stop_proximity_uses_unvalidated_historical_location` | 半径内の稼働停留所に歴史的位置をユーザー検証済みでない停留所を含む |
 | `service_period` | BRTの主要な運行時期区分。全地点共通の監査列 |
 
 `nearest_active_stop_distance_m`は停留所半径から独立している。距離閾値を変えた感度確認で
@@ -139,7 +139,7 @@ ID 22「サンピア日立」は、施設改修により2021年2月1日から経
 - 開始年感度分析：2005～2015年と2009～2015年を別々に作る
 - 稼働停留所近接モデル：`within_active_stop_radius`を使う2000～2025年の補足的な探索とする
 
-後者は既定例では2013年と2018年にアクセス状態が変わった地点を合わせた探索推定である。
+後者は既定例では2013年と2018年に稼働停留所近接状態が変わった地点を合わせた探索推定である。
 第Ⅰ期単独の効果、2019年本格運行の増分効果、運行頻度や所要時間の効果とは解釈しない。
 
 ## 解釈上の制約

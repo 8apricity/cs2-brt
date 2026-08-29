@@ -162,7 +162,7 @@ testthat::test_that("BRT stop assignment uses opening date then distance", {
     start_date = as.Date(c("2013-03-25", "2013-03-25", "2015-03-25"))
   )
 
-  assignment <- assign_brt_stop_radius(
+  assignment <- assign_brt_stop_within_radius(
     point_stop_distances,
     stops,
     stop_radius_m = 150,
@@ -253,11 +253,11 @@ testthat::test_that("BRT treatment panel follows active service periods", {
     c(NA, "high", NA, "medium", NA, "high", NA, "medium")
   )
   testthat::expect_equal(
-    treatment_panel$stop_proximity_has_non_high_confidence,
+    treatment_panel$active_stop_proximity_has_non_high_confidence,
     c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
   )
   testthat::expect_equal(
-    treatment_panel$stop_proximity_uses_unvalidated_historical_location,
+    treatment_panel$active_stop_proximity_uses_unvalidated_historical_location,
     c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
   )
 })
