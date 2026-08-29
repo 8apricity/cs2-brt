@@ -280,6 +280,32 @@ summarise_multisynth_panels <- function(fits_by_source) {
   )
 }
 
+land_price_source_plot_titles <- c(
+  land_price_publication = "Land Price Publication",
+  prefectural_land_price_survey = "Prefectural Land Price Survey"
+)
+
+print_multisynth_summary_plots <- function(
+  summaries_by_source,
+  specification_title
+) {
+  purrr::iwalk(
+    summaries_by_source,
+    function(summary_object, source_name) {
+      plot_title <- paste(
+        specification_title,
+        land_price_source_plot_titles[[source_name]],
+        sep = " — "
+      )
+
+      print(
+        plot(summary_object) +
+          ggplot2::labs(title = plot_title)
+      )
+    }
+  )
+}
+
 phase1_fits_by_source <- fit_multisynth_panels(
   phase1_model_panels_by_source,
   "phase1_treated"
@@ -288,9 +314,9 @@ phase1_summaries_by_source <- summarise_multisynth_panels(
   phase1_fits_by_source
 )
 phase1_summaries_by_source
-purrr::walk(
+print_multisynth_summary_plots(
   phase1_summaries_by_source,
-  \(x) print(plot(x))
+  "Phase I primary (2000–2015)"
 )
 
 phase1_supplementary_fits_by_source <- fit_multisynth_panels(
@@ -301,9 +327,9 @@ phase1_supplementary_summaries_by_source <- summarise_multisynth_panels(
   phase1_supplementary_fits_by_source
 )
 phase1_supplementary_summaries_by_source
-purrr::walk(
+print_multisynth_summary_plots(
   phase1_supplementary_summaries_by_source,
-  \(x) print(plot(x))
+  "Phase I supplementary (2000–2017)"
 )
 
 phase1_sensitivity_fits_by_specification <- purrr::map(
@@ -316,10 +342,17 @@ phase1_sensitivity_summaries_by_specification <- purrr::map(
   summarise_multisynth_panels
 )
 phase1_sensitivity_summaries_by_specification
-purrr::walk(
+phase1_sensitivity_plot_titles <- c(
+  start_2005 = "Phase I sensitivity (2005–2015)",
+  start_2009 = "Phase I sensitivity (2009–2015)"
+)
+purrr::iwalk(
   phase1_sensitivity_summaries_by_specification,
-  \(summaries_by_source) {
-    purrr::walk(summaries_by_source, \(x) print(plot(x)))
+  \(summaries_by_source, specification) {
+    print_multisynth_summary_plots(
+      summaries_by_source,
+      phase1_sensitivity_plot_titles[[specification]]
+    )
   }
 )
 
@@ -334,9 +367,9 @@ active_stop_proximity_summaries_by_source <- summarise_multisynth_panels(
   active_stop_proximity_fits_by_source
 )
 active_stop_proximity_summaries_by_source
-purrr::walk(
+print_multisynth_summary_plots(
   active_stop_proximity_summaries_by_source,
-  \(x) print(plot(x))
+  "Active-stop proximity (2000–2025)"
 )
 
 # a <- active_stop_proximity_model_panels_by_source$prefectural_land_price_survey |>
