@@ -1,11 +1,17 @@
 source(here::here("R", "functions.R"))
 
-# Exploratory settings. They do not define the study-wide treated area,
-# analysis period, or adopted covariate specification.
+# The Phase I periods below follow decision 0007. The treatment radius and
+# covariate specification remain exploratory rather than adopted settings.
 point_match_tolerance_m <- 10
 treatment_radius_m <- 1500
 metric_crs <- 6677
-example_panel_years <- 2000:2025
+phase1_primary_panel_years <- 2000:2015
+phase1_supp_panel_years <- 2000:2017
+phase1_start_year_sensitivity <- list(
+  start_2005 = 2005:2015,
+  start_2009 = 2009:2015
+)
+active_access_panel_years <- 2000:2025
 baseline_year <- 2010L
 baseline_covariate_columns <- character()
 # Candidate core columns include area_m2, current_use_raw,
@@ -101,35 +107,52 @@ treatment_panels <- purrr::map2(
   }
 )
 
-# Example of constructing a complete panel and a date-based treatment column.
-# The standardized data remain unchanged; treatment_panels are unbalanced,
-# in-memory analysis copies from which complete model panels are derived.
-example_panels <- purrr::map2(
-  treatment_panels,
-  phase1_exposure,
-  function(treatment_panel, exposure) {
-    filter_complete_point_panel(
-      treatment_panel,
-      years = example_panel_years
-    ) |>
-      dplyr::left_join(
-        exposure |>
-          dplyr::rename(
-            phase1_exposed = "exposed",
-            phase1_stop_id = "stop_id",
-            phase1_opening_date = "opening_date",
-            phase1_distance_m = "distance_m"
-          ),
-        by = "point_id"
+# Build a complete panel directly for the requested years. In particular, the
+# Phase I samples are not conditioned on a point remaining observed through
+# 2025.
+build_complete_model_panels <- function(panel_years) {
+  purrr::map2(
+    treatment_panels,
+    phase1_exposure,
+    function(treatment_panel, exposure) {
+      filter_complete_point_panel(
+        treatment_panel,
+        years = panel_years
       ) |>
-      dplyr::mutate(
-        phase1_treated = as.integer(
-          .data$phase1_exposed &
-            .data$reference_date >= .data$phase1_opening_date
-        ),
-        log_price = log(.data$price_yen_per_m2)
-      )
-  }
+        dplyr::left_join(
+          exposure |>
+            dplyr::rename(
+              phase1_exposed = "exposed",
+              phase1_stop_id = "stop_id",
+              phase1_opening_date = "opening_date",
+              phase1_distance_m = "distance_m"
+            ),
+          by = "point_id"
+        ) |>
+        dplyr::mutate(
+          phase1_treated = as.integer(
+            .data$phase1_exposed &
+              .data$reference_date >= .data$phase1_opening_date
+          ),
+          log_price = log(.data$price_yen_per_m2)
+        ) |>
+        sf::st_drop_geometry()
+    }
+  )
+}
+
+phase1_model_panels <- build_complete_model_panels(
+  phase1_primary_panel_years
+)
+phase1_supp_model_panels <- build_complete_model_panels(
+  phase1_supp_panel_years
+)
+phase1_start_sens_panels <- purrr::map(
+  phase1_start_year_sensitivity,
+  build_complete_model_panels
+)
+active_access_model_panels <- build_complete_model_panels(
+  active_access_panel_years
 )
 baseline_covariates <- purrr::map(
   land_price_analysis,
@@ -143,13 +166,12 @@ baseline_covariates <- purrr::map(
 )
 
 active_access_model_panels <- purrr::imap(
-  example_panels,
+  active_access_model_panels,
   function(panel, source_name) {
     assert_brt_access_is_monotone(
       panel,
       source_label = source_name
     ) |>
-      sf::st_drop_geometry() |>
       dplyr::mutate(
         brt_access_active = as.integer(.data$brt_access_active)
       )
@@ -177,96 +199,128 @@ active_access_diagnostics <- purrr::imap_dfr(
   }
 )
 
-phase1_model_panels <- purrr::map(
-  active_access_model_panels,
-  function(panel){
-    panel |> 
-      dplyr::filter(
-        access_gain_2016 == 0,
-        access_gain_2018 == 0,
-        access_gain_2019 == 0,
-        access_gain_2021_pause == 0,
-        access_gain_2022_resume == 0
+summarise_phase1_samples <- function(panels, specification) {
+  purrr::imap_dfr(
+    panels,
+    function(panel, source_name) {
+      panel |>
+        dplyr::group_by(.data$point_id) |>
+        dplyr::summarise(
+          ever_treated = any(.data$phase1_treated == 1L),
+          .groups = "drop"
+        ) |>
+        dplyr::summarise(
+          point_count = dplyr::n(),
+          treated_point_count = sum(.data$ever_treated),
+          .groups = "drop"
+        ) |>
+        dplyr::mutate(
+          specification = specification,
+          source = source_name,
+          first_year = min(panel$source_year),
+          last_year = max(panel$source_year),
+          .before = 1L
+        )
+    }
+  )
+}
+
+phase1_sample_diagnostics <- dplyr::bind_rows(
+  summarise_phase1_samples(
+    phase1_model_panels,
+    "primary_2000_2015"
+  ),
+  summarise_phase1_samples(
+    phase1_supp_model_panels,
+    "supplementary_2000_2017"
+  ),
+  purrr::imap_dfr(
+    phase1_start_sens_panels,
+    \(panels, specification) {
+      summarise_phase1_samples(panels, specification)
+    }
+  )
+)
+
+phase1_sample_diagnostics
+
+fit_multisynth_panels <- function(panels, treatment_column) {
+  model_formula <- stats::reformulate(
+    treatment_column,
+    response = "log_price"
+  )
+
+  purrr::map(
+    panels,
+    function(panel) {
+      augsynth::multisynth(
+        model_formula,
+        unit = point_id,
+        time = source_year,
+        data = panel,
+        fixedeff = TRUE,
+        scm = TRUE
       )
-  }
-)
+    }
+  )
+}
 
-pure_phase1_model_panels <- purrr::map(
-  active_access_model_panels,
-  function(panel){
-    panel |> 
-      dplyr::filter(source_year <= 2017)
-  }
-)
+summarise_multisynth_panels <- function(fits) {
+  purrr::map(
+    fits,
+    summary,
+    inf_type = "jackknife"
+  )
+}
 
-phase1_fits <- purrr::map(
+phase1_fits <- fit_multisynth_panels(
   phase1_model_panels,
-  function(panel) {
-    augsynth::multisynth(
-      log_price ~ brt_access_active,
-      unit = point_id,
-      time = source_year,
-      data = panel,
-      fixedeff = TRUE,
-      scm = TRUE
-    )
-  }
+  "phase1_treated"
 )
-phase1_summaries <- purrr::map(
-  phase1_fits,
-  summary,
-  inf_type = "jackknife"
-)
+phase1_summaries <- summarise_multisynth_panels(phase1_fits)
 phase1_summaries
 purrr::walk(
   phase1_summaries,
   \(x) print(plot(x))
 )
 
-pure_phase1_fits <- purrr::map(
-  pure_phase1_model_panels,
-  function(panel) {
-    augsynth::multisynth(
-      log_price ~ brt_access_active,
-      unit = point_id,
-      time = source_year,
-      data = panel,
-      fixedeff = TRUE,
-      scm = TRUE
-    )
-  }
+supplementary_phase1_fits <- fit_multisynth_panels(
+  phase1_supp_model_panels,
+  "phase1_treated"
 )
-pure_phase1_summaries <- purrr::map(
-  pure_phase1_fits,
-  summary,
-  inf_type = "jackknife"
+supplementary_phase1_summaries <- summarise_multisynth_panels(
+  supplementary_phase1_fits
 )
-pure_phase1_summaries
+supplementary_phase1_summaries
 purrr::walk(
-  pure_phase1_summaries,
+  supplementary_phase1_summaries,
   \(x) print(plot(x))
+)
+
+phase1_start_sens_fits <- purrr::map(
+  phase1_start_sens_panels,
+  fit_multisynth_panels,
+  treatment_column = "phase1_treated"
+)
+phase1_start_sens_summaries <- purrr::map(
+  phase1_start_sens_fits,
+  summarise_multisynth_panels
+)
+phase1_start_sens_summaries
+purrr::walk(
+  phase1_start_sens_summaries,
+  \(summaries) purrr::walk(summaries, \(x) print(plot(x)))
 )
 
 active_access_diagnostics
 
-active_access_fits <- purrr::map(
+active_access_fits <- fit_multisynth_panels(
   active_access_model_panels,
-  function(panel) {
-    augsynth::multisynth(
-      log_price ~ brt_access_active,
-      unit = point_id,
-      time = source_year,
-      data = panel,
-      fixedeff = TRUE,
-      scm = TRUE
-    )
-  }
+  "brt_access_active"
 )
 
-active_access_summaries <- purrr::map(
-  active_access_fits,
-  summary,
-  inf_type = "jackknife"
+active_access_summaries <- summarise_multisynth_panels(
+  active_access_fits
 )
 active_access_summaries
 purrr::walk(
@@ -320,12 +374,46 @@ extract_multisynth_average_att <- function(summary_object) {
     )
 }
 
+summarise_average_atts <- function(summaries, specification) {
+  purrr::imap_dfr(
+    summaries,
+    function(summary_object, source_name) {
+      extract_multisynth_average_att(summary_object) |>
+        dplyr::mutate(
+          specification = specification,
+          source = source_name,
+          .before = 1L
+        )
+    }
+  )
+}
+
+phase1_average_att_comparison <- dplyr::bind_rows(
+  summarise_average_atts(
+    phase1_summaries,
+    "primary_2000_2015"
+  ),
+  summarise_average_atts(
+    supplementary_phase1_summaries,
+    "supplementary_2000_2017"
+  ),
+  purrr::imap_dfr(
+    phase1_start_sens_summaries,
+    \(summaries, specification) {
+      summarise_average_atts(summaries, specification)
+    }
+  )
+)
+
+phase1_average_att_comparison
+
 
 # Re-estimate multisynth after removing each treated point in turn.
 run_multisynth_loo <- function(
-    panel,
-    source_name,
-    reference_summary
+  panel,
+  source_name,
+  reference_summary,
+  treatment_column
 ) {
   
   # Identify points that are treated at least once in this analysis panel.
@@ -333,7 +421,7 @@ run_multisynth_loo <- function(
     dplyr::group_by(.data$point_id) |>
     dplyr::summarise(
       ever_treated = any(
-        .data$brt_access_active == 1L,
+        .data[[treatment_column]] == 1L,
         na.rm = TRUE
       ),
       .groups = "drop"
@@ -368,8 +456,13 @@ run_multisynth_loo <- function(
       tryCatch(
         {
           
+          model_formula <- stats::reformulate(
+            treatment_column,
+            response = "log_price"
+          )
+
           loo_fit <- augsynth::multisynth(
-            log_price ~ brt_access_active,
+            model_formula,
             unit = point_id,
             time = source_year,
             data = loo_panel,
@@ -433,7 +526,8 @@ phase1_loo_results <- purrr::imap_dfr(
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = phase1_summaries[[source_name]]
+      reference_summary = phase1_summaries[[source_name]],
+      treatment_column = "phase1_treated"
     )
   }
 )
@@ -442,21 +536,22 @@ phase1_loo_results
 
 
 # -------------------------------------------------------------------------
-# 2. Pure Phase 1 specification (through 2017)
+# 2. Supplementary Phase 1 specification (through 2017)
 # -------------------------------------------------------------------------
 
-pure_phase1_loo_results <- purrr::imap_dfr(
-  pure_phase1_model_panels,
+phase1_supp_loo_results <- purrr::imap_dfr(
+  phase1_supp_model_panels,
   function(panel, source_name) {
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = pure_phase1_summaries[[source_name]]
+      reference_summary = supplementary_phase1_summaries[[source_name]],
+      treatment_column = "phase1_treated"
     )
   }
 )
 
-pure_phase1_loo_results
+phase1_supp_loo_results
 
 
 # -------------------------------------------------------------------------
@@ -469,7 +564,8 @@ active_access_loo_results <- purrr::imap_dfr(
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = active_access_summaries[[source_name]]
+      reference_summary = active_access_summaries[[source_name]],
+      treatment_column = "brt_access_active"
     )
   }
 )
@@ -484,12 +580,12 @@ active_access_loo_results
 loo_results <- dplyr::bind_rows(
   phase1_loo_results |>
     dplyr::mutate(
-      specification = "phase1",
+      specification = "phase1_primary_2000_2015",
       .before = 1L
     ),
-  pure_phase1_loo_results |>
+  phase1_supp_loo_results |>
     dplyr::mutate(
-      specification = "pure_phase1",
+      specification = "phase1_supplementary_2000_2017",
       .before = 1L
     ),
   active_access_loo_results |>

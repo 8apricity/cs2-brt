@@ -19,6 +19,7 @@
 | 0004 | 採用 | 研究概要では沿線地域の距離閾値を固定しない | [0004-do-not-fix-distance-threshold.md](0004-do-not-fix-distance-threshold.md) |
 | 0005 | 採用 | 対照群の候補を日立市内に限定しない | [0005-allow-controls-outside-hitachi.md](0005-allow-controls-outside-hitachi.md) |
 | 0006 | 採用 | 主仮説の方向を限定しない | [0006-use-direction-neutral-hypothesis.md](0006-use-direction-neutral-hypothesis.md) |
+| 0007 | 採用 | 第Ⅰ期主分析を当初11停留所・2000～2015年とし、期間別に完全パネルを作る | [0007-define-phase1-analysis-periods.md](0007-define-phase1-analysis-periods.md) |
 
 ## 更新規則
 
