@@ -6,7 +6,7 @@ point_match_tolerance_m <- 10
 treatment_radius_m <- 1500
 metric_crs <- 6677
 phase1_primary_panel_years <- 2000:2015
-phase1_supp_panel_years <- 2000:2017
+phase1_supplement_years <- 2000:2017
 phase1_start_year_sensitivity <- list(
   start_2005 = 2005:2015,
   start_2009 = 2009:2015
@@ -144,10 +144,10 @@ build_complete_model_panels <- function(panel_years) {
 phase1_model_panels <- build_complete_model_panels(
   phase1_primary_panel_years
 )
-phase1_supp_model_panels <- build_complete_model_panels(
-  phase1_supp_panel_years
+phase1_supplement_panels <- build_complete_model_panels(
+  phase1_supplement_years
 )
-phase1_start_sens_panels <- purrr::map(
+phase1_sensitivity_panels <- purrr::map(
   phase1_start_year_sensitivity,
   build_complete_model_panels
 )
@@ -231,11 +231,11 @@ phase1_sample_diagnostics <- dplyr::bind_rows(
     "primary_2000_2015"
   ),
   summarise_phase1_samples(
-    phase1_supp_model_panels,
+    phase1_supplement_panels,
     "supplementary_2000_2017"
   ),
   purrr::imap_dfr(
-    phase1_start_sens_panels,
+    phase1_sensitivity_panels,
     \(panels, specification) {
       summarise_phase1_samples(panels, specification)
     }
@@ -284,31 +284,31 @@ purrr::walk(
   \(x) print(plot(x))
 )
 
-supplementary_phase1_fits <- fit_multisynth_panels(
-  phase1_supp_model_panels,
+phase1_supplement_fits <- fit_multisynth_panels(
+  phase1_supplement_panels,
   "phase1_treated"
 )
-supplementary_phase1_summaries <- summarise_multisynth_panels(
-  supplementary_phase1_fits
+phase1_supplement_summaries <- summarise_multisynth_panels(
+  phase1_supplement_fits
 )
-supplementary_phase1_summaries
+phase1_supplement_summaries
 purrr::walk(
-  supplementary_phase1_summaries,
+  phase1_supplement_summaries,
   \(x) print(plot(x))
 )
 
-phase1_start_sens_fits <- purrr::map(
-  phase1_start_sens_panels,
+phase1_sensitivity_fits <- purrr::map(
+  phase1_sensitivity_panels,
   fit_multisynth_panels,
   treatment_column = "phase1_treated"
 )
-phase1_start_sens_summaries <- purrr::map(
-  phase1_start_sens_fits,
+phase1_sensitivity_summaries <- purrr::map(
+  phase1_sensitivity_fits,
   summarise_multisynth_panels
 )
-phase1_start_sens_summaries
+phase1_sensitivity_summaries
 purrr::walk(
-  phase1_start_sens_summaries,
+  phase1_sensitivity_summaries,
   \(summaries) purrr::walk(summaries, \(x) print(plot(x)))
 )
 
@@ -394,11 +394,11 @@ phase1_average_att_comparison <- dplyr::bind_rows(
     "primary_2000_2015"
   ),
   summarise_average_atts(
-    supplementary_phase1_summaries,
+    phase1_supplement_summaries,
     "supplementary_2000_2017"
   ),
   purrr::imap_dfr(
-    phase1_start_sens_summaries,
+    phase1_sensitivity_summaries,
     \(summaries, specification) {
       summarise_average_atts(summaries, specification)
     }
@@ -539,19 +539,19 @@ phase1_loo_results
 # 2. Supplementary Phase 1 specification (through 2017)
 # -------------------------------------------------------------------------
 
-phase1_supp_loo_results <- purrr::imap_dfr(
-  phase1_supp_model_panels,
+phase1_supplement_loo <- purrr::imap_dfr(
+  phase1_supplement_panels,
   function(panel, source_name) {
     run_multisynth_loo(
       panel = panel,
       source_name = source_name,
-      reference_summary = supplementary_phase1_summaries[[source_name]],
+      reference_summary = phase1_supplement_summaries[[source_name]],
       treatment_column = "phase1_treated"
     )
   }
 )
 
-phase1_supp_loo_results
+phase1_supplement_loo
 
 
 # -------------------------------------------------------------------------
@@ -583,7 +583,7 @@ loo_results <- dplyr::bind_rows(
       specification = "phase1_primary_2000_2015",
       .before = 1L
     ),
-  phase1_supp_loo_results |>
+  phase1_supplement_loo |>
     dplyr::mutate(
       specification = "phase1_supplementary_2000_2017",
       .before = 1L

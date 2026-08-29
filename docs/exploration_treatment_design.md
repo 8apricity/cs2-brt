@@ -23,13 +23,10 @@ BRTアクセス状態を確認するための**探索実装**を記録する。�
 - 停留所の開始・終了：`data/processed/brt_stops.gpkg`
 - 一時的な運行休止：`data/manual/brt_stop_service_interruptions.csv`
 - 処置半径：`analysis/exploration.R`先頭の`treatment_radius_m`
-- 第Ⅰ期主分析：2000～2015年
-- 第Ⅰ期補助分析：2000～2017年。2016年の停留所追加を含む
-- 第Ⅰ期開始年の感度分析：2005～2015年、2009～2015年
 - 全稼働アクセスの探索期間：2000～2025年
 
-第Ⅰ期の期間は[決定0007](decision_logs/0007-define-phase1-analysis-periods.md)に従う。
-完全パネルは各期間について元の地点年表から別々に作る。処置半径1,500mと全稼働
+第Ⅰ期の処置と期間は[決定0007](decision_logs/0007-define-phase1-analysis-periods.md)に従い、
+完全パネルは各仕様について元の地点年表から別々に作る。処置半径1,500mと全稼働
 アクセスの期間は探索設定である。
 
 処置列はインメモリの`treatment_panels`へ付ける。地価の標準化成果物である
