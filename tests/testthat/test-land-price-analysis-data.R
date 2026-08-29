@@ -185,6 +185,191 @@ testthat::test_that("BRT exposure chooses earliest opening then nearest stop", {
   testthat::expect_equal(exposure$distance_m, c(100, 80, NA_real_))
 })
 
+testthat::test_that("BRT treatment panel follows active service periods", {
+  point_year_panel <- tidyr::expand_grid(
+    point_id = c("point_1", "point_2"),
+    reference_date = as.Date(c(
+      "2012-01-01",
+      "2013-07-01",
+      "2019-07-01",
+      "2020-07-01"
+    ))
+  ) |>
+    dplyr::mutate(source_year = as.integer(format(.data$reference_date, "%Y")))
+  point_stop_distances <- tidyr::expand_grid(
+    point_id = c("point_1", "point_2"),
+    stop_id = c("phase1", "phase2")
+  ) |>
+    dplyr::mutate(distance_m = c(100, 200, 600, 300))
+  stops <- data.frame(
+    stop_id = c("phase1", "phase2"),
+    start_date = as.Date(c("2013-03-25", "2018-03-26")),
+    end_date = as.Date(c("2019-03-31", NA)),
+    confidence = c("high", "medium"),
+    historical_validation_status = c("user_verified", "provisional")
+  )
+  interruptions <- data.frame(
+    stop_id = c("phase2", "phase2"),
+    inactive_start_date = as.Date(c("2017-01-01", "2019-06-01")),
+    inactive_end_date = as.Date(c("2017-01-31", "2019-08-31"))
+  )
+
+  treatment_panel <- derive_brt_treatment_panel(
+    point_year_panel,
+    point_stop_distances,
+    stops,
+    treatment_radius_m = 250,
+    service_interruptions = interruptions
+  ) |>
+    dplyr::arrange(.data$point_id, .data$reference_date)
+
+  testthat::expect_equal(
+    treatment_panel$brt_access_active,
+    c(FALSE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+  testthat::expect_equal(
+    treatment_panel$active_stop_count,
+    c(0L, 1L, 0L, 1L, 0L, 0L, 0L, 0L)
+  )
+  testthat::expect_equal(
+    treatment_panel$nearest_active_stop_id,
+    c(NA, "phase1", NA, "phase2", NA, "phase1", NA, "phase2")
+  )
+  testthat::expect_equal(
+    treatment_panel$nearest_active_stop_distance_m,
+    c(NA, 100, NA, 200, NA, 600, NA, 300)
+  )
+  testthat::expect_equal(
+    treatment_panel$nearest_active_stop_confidence,
+    c(NA, "high", NA, "medium", NA, "high", NA, "medium")
+  )
+  testthat::expect_equal(
+    treatment_panel$active_access_has_non_high_confidence,
+    c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+  testthat::expect_equal(
+    treatment_panel$active_access_uses_unvalidated_historical_location,
+    c(FALSE, FALSE, FALSE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  )
+})
+
+testthat::test_that("BRT treatment panel separates event geography and timing", {
+  point_year_panel <- tidyr::expand_grid(
+    point_id = c("point_1", "point_2"),
+    reference_date = as.Date(c(
+      "2012-01-01",
+      "2013-07-01",
+      "2019-07-01",
+      "2020-07-01"
+    ))
+  ) |>
+    dplyr::mutate(source_year = as.integer(format(.data$reference_date, "%Y")))
+  point_stop_distances <- tidyr::expand_grid(
+    point_id = c("point_1", "point_2"),
+    stop_id = c("phase1", "phase2")
+  ) |>
+    dplyr::mutate(distance_m = c(100, 200, 600, 300))
+  stops <- data.frame(
+    stop_id = c("phase1", "phase2"),
+    start_date = as.Date(c("2013-03-25", "2018-03-26")),
+    end_date = as.Date(c("2019-03-31", NA)),
+    confidence = c("high", "medium"),
+    historical_validation_status = c("user_verified", "provisional")
+  )
+  interruptions <- data.frame(
+    stop_id = "phase2",
+    inactive_start_date = as.Date("2019-06-01"),
+    inactive_end_date = as.Date("2019-08-31")
+  )
+  events <- data.frame(
+    event_id = c("2013", "2018", "2019_pause", "2019_resume"),
+    event_date = as.Date(c(
+      "2013-03-25",
+      "2018-03-26",
+      "2019-06-01",
+      "2019-09-01"
+    )),
+    service_period = c(
+      "phase1",
+      "phase2_preview",
+      "phase2_interrupted",
+      "phase2_resumed"
+    )
+  )
+
+  treatment_panel <- derive_brt_treatment_panel(
+    point_year_panel,
+    point_stop_distances,
+    stops,
+    treatment_radius_m = 250,
+    service_interruptions = interruptions,
+    access_events = events
+  ) |>
+    dplyr::arrange(.data$point_id, .data$reference_date)
+
+  testthat::expect_equal(
+    treatment_panel$service_period,
+    rep(c(
+      "pre_brt",
+      "phase1",
+      "phase2_interrupted",
+      "phase2_resumed"
+    ), 2L)
+  )
+  testthat::expect_equal(
+    treatment_panel$access_gain_2013,
+    c(rep(TRUE, 4L), rep(FALSE, 4L))
+  )
+  testthat::expect_equal(
+    treatment_panel$post_2013,
+    rep(c(FALSE, TRUE, TRUE, TRUE), 2L)
+  )
+  testthat::expect_equal(
+    treatment_panel$access_gain_2013_treated,
+    c(FALSE, TRUE, TRUE, TRUE, rep(FALSE, 4L))
+  )
+  testthat::expect_equal(
+    treatment_panel$access_loss_2019_pause,
+    c(rep(TRUE, 4L), rep(FALSE, 4L))
+  )
+  testthat::expect_equal(
+    treatment_panel$access_loss_2019_pause_treated,
+    c(FALSE, FALSE, TRUE, TRUE, rep(FALSE, 4L))
+  )
+  testthat::expect_equal(
+    treatment_panel$access_gain_2019_resume_treated,
+    c(FALSE, FALSE, FALSE, TRUE, rep(FALSE, 4L))
+  )
+})
+
+testthat::test_that("BRT access monotonicity reports treatment reversals", {
+  panel_with_reversal <- data.frame(
+    point_id = rep(c("point_1", "point_2"), each = 3L),
+    reference_date = rep(
+      as.Date(c("2018-01-01", "2019-01-01", "2020-01-01")),
+      2L
+    ),
+    brt_access_active = c(FALSE, TRUE, FALSE, FALSE, TRUE, TRUE)
+  )
+
+  testthat::expect_error(
+    assert_brt_access_is_monotone(
+      panel_with_reversal,
+      source_label = "publication"
+    ),
+    "publication.*1 treatment reversal.*point_1.*2020-01-01"
+  )
+
+  monotone_panel <- dplyr::filter(
+    panel_with_reversal,
+    .data$point_id == "point_2"
+  )
+  testthat::expect_identical(
+    assert_brt_access_is_monotone(monotone_panel),
+    monotone_panel
+  )
+})
+
 testthat::test_that("baseline covariates use an exact observed year", {
   observations <- land_price_analysis_fixture()
   observations$area_m2[[2L]] <- NA_real_

@@ -16,6 +16,12 @@
 - `data/manual/brt_stop_coordinate_validation.csv`：歴史停留所についてユーザーが
   確認した座標と確認方法
 
+一時的なBRT停車休止は、停留所を一意に保つこの加工処理へ同じ`stop_id`の複数行として
+混在させない。`data/manual/brt_stop_service_interruptions.csv`に別表として記録し、
+分析時にprocessed停留所表と組み合わせる。現在はサンピア日立の2021年2月～
+2022年4月の経由休止1件を収録する。分析列への反映は
+[BRT処置列の探索実装メモ](exploration_treatment_design.md)を参照する。
+
 geometryの正本は公式XMLとし、手動確認座標で上書きしない。手動確認座標は、
 公式XMLの2022年座標が歴史的位置と整合するかを記録するために使う。
 
@@ -102,3 +108,5 @@ targets::tar_make(names = brt_stop_outputs)
 - この成果物は停留所点であり、2013年の運行経路を表さない。
 - `provisional`の9停留所を2013年の厳密な位置として扱う場合は、追加検証が必要である。
 - Google Street Viewによる確認はユーザー確認済み情報であり、公式一次資料ではない。
+- `current`と単一の`start_date`・`end_date`だけでは途中の運行休止を表さない。
+  時点別の稼働判定では手動の休止表も併用する。
