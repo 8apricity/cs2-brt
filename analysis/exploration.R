@@ -93,7 +93,8 @@ example_panels <- purrr::map2(
         phase1_treated = as.integer(
           .data$phase1_exposed &
             .data$reference_date >= .data$phase1_opening_date
-        )
+        ),
+        log_price = log(.data$price_yen_per_m2)
       )
   }
 )
@@ -107,3 +108,17 @@ baseline_covariates <- purrr::map(
     )
   }
 )
+
+publication_fit <- augsynth::multisynth(
+  log_price ~ phase1_treated,
+  unit = point_id,
+  time = source_year,
+  data = sf::st_drop_geometry(example_panels$publication),
+  fixedeff = FALSE,
+  scm = TRUE,
+)
+
+publication_summary <- summary(publication_fit, inf_type = "jackknife")
+publication_summary
+plot(publication_summary)
+
