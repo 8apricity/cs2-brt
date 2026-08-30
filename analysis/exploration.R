@@ -744,4 +744,322 @@ loo_plot <- loo_results |>
   ggplot2::theme_bw()
 
 print(loo_plot)
-  
+
+
+# -------------------------------------------------------------------------
+# Treated-point ATT heterogeneity diagnostics
+# -------------------------------------------------------------------------
+
+# nolint start: object_length_linter, object_usage_linter
+
+# Extract the post-treatment average ATT for each treated point. These rows
+# are descriptive point estimates; the small number of treated points does
+# not support interpreting the cross-point associations below as causal.
+extract_multisynth_unit_average_att <- function(summary_object) {
+  unit_rows <- summary_object$att |>
+    dplyr::filter(
+      is.na(.data$Time),
+      .data$Level != "Average"
+    )
+
+  if (nrow(unit_rows) == 0L) {
+    stop("No treated-point average ATT rows were found.")
+  }
+
+  unit_rows |>
+    dplyr::transmute(
+      point_id = .data$Level,
+      unit_average_att = .data$Estimate,
+      unit_att_std_error = .data$Std.Error,
+      unit_att_lower_bound = .data$lower_bound,
+      unit_att_upper_bound = .data$upper_bound
+    )
+}
+
+# Summarise how closely each treated point tracked its synthetic comparison
+# before treatment. A large value indicates that apparent post-treatment
+# heterogeneity may partly reflect an unstable counterfactual.
+summarise_multisynth_unit_pre_fit <- function(summary_object) {
+  summary_object$att |>
+    dplyr::filter(
+      !is.na(.data$Time),
+      .data$Time < 0,
+      .data$Level != "Average"
+    ) |>
+    dplyr::group_by(point_id = .data$Level) |>
+    dplyr::summarise(
+      pre_treatment_fit_rmse = sqrt(mean(.data$Estimate^2)),
+      pre_treatment_fit_max_abs = max(abs(.data$Estimate)),
+      .groups = "drop"
+    )
+}
+
+calculate_log_price_slope <- function(source_year, log_price) {
+  complete <- !is.na(source_year) & !is.na(log_price)
+  source_year <- source_year[complete]
+  log_price <- log_price[complete]
+
+  if (length(source_year) < 2L || dplyr::n_distinct(source_year) < 2L) {
+    return(NA_real_)
+  }
+
+  unname(stats::coef(stats::lm(log_price ~ source_year))[[2L]])
+}
+
+build_multisynth_unit_heterogeneity <- function(
+  panel,
+  summary_object,
+  treatment_column,
+  specification,
+  source_name
+) {
+  first_treated_rows <- panel |>
+    dplyr::filter(.data[[treatment_column]] == 1L) |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::slice_min(
+      .data$reference_date,
+      n = 1L,
+      with_ties = FALSE
+    ) |>
+    dplyr::ungroup()
+
+  if (identical(treatment_column, "phase1_treated")) {
+    treatment_assignments <- first_treated_rows |>
+      dplyr::transmute(
+        point_id = .data$point_id,
+        first_treated_reference_date = .data$reference_date,
+        first_treated_year = .data$source_year,
+        treatment_stop_id = .data$phase1_stop_id,
+        treatment_distance_m = .data$phase1_distance_m
+      )
+  } else {
+    treatment_assignments <- first_treated_rows |>
+      dplyr::transmute(
+        point_id = .data$point_id,
+        first_treated_reference_date = .data$reference_date,
+        first_treated_year = .data$source_year,
+        treatment_stop_id = .data$nearest_active_stop_id,
+        treatment_distance_m = .data$nearest_active_stop_distance_m
+      )
+  }
+
+  pre_treatment_rows <- panel |>
+    dplyr::inner_join(
+      treatment_assignments,
+      by = "point_id"
+    ) |>
+    dplyr::filter(
+      .data$reference_date < .data$first_treated_reference_date
+    )
+
+  pre_treatment_trends <- pre_treatment_rows |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::summarise(
+      pre_treatment_year_count = dplyr::n(),
+      pre_treatment_log_price_slope = calculate_log_price_slope(
+        .data$source_year,
+        .data$log_price
+      ),
+      recent_pre_treatment_log_price_slope = calculate_log_price_slope(
+        .data$source_year[
+          .data$source_year >= .data$first_treated_year - 5L
+        ],
+        .data$log_price[
+          .data$source_year >= .data$first_treated_year - 5L
+        ]
+      ),
+      .groups = "drop"
+    )
+
+  baseline_attributes <- pre_treatment_rows |>
+    dplyr::group_by(.data$point_id) |>
+    dplyr::slice_max(
+      .data$reference_date,
+      n = 1L,
+      with_ties = FALSE
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::transmute(
+      point_id = .data$point_id,
+      baseline_year = .data$source_year,
+      location = .data$location,
+      baseline_price_yen_per_m2 = .data$price_yen_per_m2,
+      current_use_raw = .data$current_use_raw,
+      surrounding_land_use_raw = .data$surrounding_land_use_raw,
+      nearest_transport_name_raw = .data$nearest_transport_name_raw,
+      transport_distance_m = .data$transport_distance_m,
+      use_district_raw = .data$use_district_raw,
+      front_road_width_m = .data$front_road_width_m,
+      building_coverage_pct = .data$building_coverage_pct,
+      floor_area_ratio_pct = .data$floor_area_ratio_pct
+    )
+
+  extract_multisynth_unit_average_att(summary_object) |>
+    dplyr::left_join(
+      summarise_multisynth_unit_pre_fit(summary_object),
+      by = "point_id"
+    ) |>
+    dplyr::left_join(
+      treatment_assignments,
+      by = "point_id"
+    ) |>
+    dplyr::left_join(
+      pre_treatment_trends,
+      by = "point_id"
+    ) |>
+    dplyr::left_join(
+      baseline_attributes,
+      by = "point_id"
+    ) |>
+    dplyr::mutate(
+      specification = specification,
+      source = source_name,
+      point_label = sub(".*_", "", .data$point_id),
+      .before = 1L
+    )
+}
+
+build_heterogeneity_by_source <- function(
+  panels_by_source,
+  summaries_by_source,
+  treatment_column,
+  specification
+) {
+  purrr::imap_dfr(
+    panels_by_source,
+    function(panel, source_name) {
+      build_multisynth_unit_heterogeneity(
+        panel = panel,
+        summary_object = summaries_by_source[[source_name]],
+        treatment_column = treatment_column,
+        specification = specification,
+        source_name = source_name
+      )
+    }
+  )
+}
+
+phase1_unit_att_heterogeneity <- dplyr::bind_rows(
+  build_heterogeneity_by_source(
+    phase1_model_panels_by_source,
+    phase1_summaries_by_source,
+    "phase1_treated",
+    "phase1_primary_2000_2015"
+  ),
+  build_heterogeneity_by_source(
+    phase1_supplementary_panels_by_source,
+    phase1_supplementary_summaries_by_source,
+    "phase1_treated",
+    "phase1_supplementary_2000_2017"
+  ),
+  purrr::imap_dfr(
+    phase1_sensitivity_panels_by_specification,
+    function(panels_by_source, specification) {
+      build_heterogeneity_by_source(
+        panels_by_source,
+        phase1_sensitivity_summaries_by_specification[[specification]],
+        "phase1_treated",
+        paste0("phase1_sensitivity_", specification)
+      )
+    }
+  )
+)
+
+active_stop_unit_att_heterogeneity <- build_heterogeneity_by_source(
+  active_stop_proximity_model_panels_by_source,
+  active_stop_proximity_summaries_by_source,
+  "within_active_stop_radius",
+  "active_stop_proximity_2000_2025"
+)
+
+unit_att_heterogeneity <- dplyr::bind_rows(
+  phase1_unit_att_heterogeneity,
+  active_stop_unit_att_heterogeneity
+)
+
+heterogeneity_numeric_features <- c(
+  "treatment_distance_m",
+  "transport_distance_m",
+  "baseline_price_yen_per_m2",
+  "front_road_width_m",
+  "building_coverage_pct",
+  "floor_area_ratio_pct",
+  "pre_treatment_log_price_slope",
+  "recent_pre_treatment_log_price_slope",
+  "pre_treatment_fit_rmse"
+)
+
+summarise_heterogeneity_feature_associations <- function(data) {
+  purrr::map_dfr(
+    heterogeneity_numeric_features,
+    function(feature_name) {
+      complete <- data |>
+        dplyr::filter(
+          !is.na(.data$unit_average_att),
+          !is.na(.data[[feature_name]])
+        )
+
+      rank_correlation <- if (
+        nrow(complete) >= 3L &&
+          dplyr::n_distinct(complete[[feature_name]]) >= 2L
+      ) {
+        stats::cor(
+          complete$unit_average_att,
+          complete[[feature_name]],
+          method = "spearman"
+        )
+      } else {
+        NA_real_
+      }
+
+      tibble::tibble(
+        feature = feature_name,
+        point_count = nrow(complete),
+        spearman_rank_correlation = rank_correlation
+      )
+    }
+  )
+}
+
+# These correlations are exploratory effect-modification diagnostics. With
+# four to eight treated points per source and specification, they are not
+# estimates of a systematic causal mechanism and no p-values are reported.
+heterogeneity_feature_associations <- unit_att_heterogeneity |>
+  dplyr::group_by(.data$specification, .data$source) |>
+  dplyr::group_modify(
+    \(data, keys) summarise_heterogeneity_feature_associations(data)
+  ) |>
+  dplyr::ungroup()
+
+unit_att_heterogeneity
+heterogeneity_feature_associations
+
+att_distance_heterogeneity_plot <- unit_att_heterogeneity |>
+  ggplot2::ggplot(
+    ggplot2::aes(
+      x = .data$treatment_distance_m,
+      y = .data$unit_average_att,
+      label = .data$point_label
+    )
+  ) +
+  ggplot2::geom_hline(yintercept = 0, linetype = 2) +
+  ggplot2::geom_point() +
+  ggplot2::geom_text(nudge_y = 0.001, check_overlap = TRUE) +
+  ggplot2::facet_grid(
+    specification ~ source,
+    scales = "free"
+  ) +
+  ggplot2::labs(
+    x = "Distance to assigned treatment stop (m)",
+    y = "Treated-point average ATT",
+    title = "Exploratory treated-point ATT heterogeneity",
+    subtitle = paste(
+      "Labels are point_id suffixes; associations are descriptive",
+      "because each panel has few treated points"
+    )
+  ) +
+  ggplot2::theme_bw()
+
+print(att_distance_heterogeneity_plot)
+
+# nolint end
