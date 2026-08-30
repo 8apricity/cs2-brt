@@ -1,5 +1,29 @@
 source(here::here("R", "functions.R"))
 
+analysis_output_dir <- here::here("analysis", "outputs")
+dir.create(
+  analysis_output_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+save_analysis_plot <- function(
+  plot,
+  filename,
+  width = 10,
+  height = 6
+) {
+  ggplot2::ggsave(
+    filename = file.path(analysis_output_dir, filename),
+    plot = plot,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = 300,
+    bg = "white"
+  )
+}
+
 # The Phase I periods below follow decision 0007. The stop radius and
 # covariate specification remain exploratory rather than adopted settings.
 point_match_tolerance_m <- 10
@@ -287,7 +311,8 @@ land_price_source_plot_titles <- c(
 
 print_multisynth_summary_plots <- function(
   summaries_by_source,
-  specification_title
+  specification_title,
+  specification_id
 ) {
   purrr::iwalk(
     summaries_by_source,
@@ -297,10 +322,13 @@ print_multisynth_summary_plots <- function(
         land_price_source_plot_titles[[source_name]],
         sep = " — "
       )
+      summary_plot <- plot(summary_object) +
+        ggplot2::labs(title = plot_title)
 
-      print(
-        plot(summary_object) +
-          ggplot2::labs(title = plot_title)
+      print(summary_plot)
+      save_analysis_plot(
+        summary_plot,
+        paste0(specification_id, "__", source_name, ".png")
       )
     }
   )
@@ -316,7 +344,8 @@ phase1_summaries_by_source <- summarise_multisynth_panels(
 phase1_summaries_by_source
 print_multisynth_summary_plots(
   phase1_summaries_by_source,
-  "Phase I primary (2000–2015)"
+  "Phase I primary (2000–2015)",
+  "phase1_primary_2000_2015"
 )
 
 phase1_supplementary_fits_by_source <- fit_multisynth_panels(
@@ -329,7 +358,8 @@ phase1_supplementary_summaries_by_source <- summarise_multisynth_panels(
 phase1_supplementary_summaries_by_source
 print_multisynth_summary_plots(
   phase1_supplementary_summaries_by_source,
-  "Phase I supplementary (2000–2017)"
+  "Phase I supplementary (2000–2017)",
+  "phase1_supplementary_2000_2017"
 )
 
 phase1_sensitivity_fits_by_specification <- purrr::map(
@@ -351,7 +381,8 @@ purrr::iwalk(
   \(summaries_by_source, specification) {
     print_multisynth_summary_plots(
       summaries_by_source,
-      phase1_sensitivity_plot_titles[[specification]]
+      phase1_sensitivity_plot_titles[[specification]],
+      paste0("phase1_sensitivity_", specification)
     )
   }
 )
@@ -369,7 +400,8 @@ active_stop_proximity_summaries_by_source <- summarise_multisynth_panels(
 active_stop_proximity_summaries_by_source
 print_multisynth_summary_plots(
   active_stop_proximity_summaries_by_source,
-  "Active-stop proximity (2000–2025)"
+  "Active-stop proximity (2000–2025)",
+  "active_stop_proximity_2000_2025"
 )
 
 # a <- active_stop_proximity_model_panels_by_source$prefectural_land_price_survey |>
@@ -744,6 +776,12 @@ loo_plot <- loo_results |>
   ggplot2::theme_bw()
 
 print(loo_plot)
+save_analysis_plot(
+  loo_plot,
+  "leave_one_treated_point_out_sensitivity.png",
+  width = 12,
+  height = 14
+)
 
 
 # -------------------------------------------------------------------------
@@ -1061,5 +1099,11 @@ att_distance_heterogeneity_plot <- unit_att_heterogeneity |>
   ggplot2::theme_bw()
 
 print(att_distance_heterogeneity_plot)
+save_analysis_plot(
+  att_distance_heterogeneity_plot,
+  "treated_point_att_distance_heterogeneity.png",
+  width = 12,
+  height = 10
+)
 
 # nolint end
